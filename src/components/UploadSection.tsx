@@ -70,7 +70,11 @@ const UploadSection = () => {
       const textContent = await page.getTextContent();
       fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n';
     }
-    return fullText;
+    // Clean up the extracted text
+    let cleanedText = fullText.replace(/\s+/g, ' ').trim(); // Replace multiple spaces with single, trim ends
+    // Optionally, handle multiple newlines if needed, but for now this is a good start
+    // cleanedText = cleanedText.replace(/\n\s*\n/g, '\n'); // Replace multiple newlines with single
+    return cleanedText;
   };
 
 
@@ -146,9 +150,9 @@ const UploadSection = () => {
       } else {
          dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing upload or summary:", error);
-      toast({ title: "Upload Error", description: "Could not process content or generate summary.", variant: "destructive" });
+      toast({ title: "Upload Error", description: error.message || "Could not process content or generate summary.", variant: "destructive" });
       dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
     }
   };
