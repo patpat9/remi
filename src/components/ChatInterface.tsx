@@ -59,27 +59,26 @@ const ChatInterface = () => {
 
   // Effect 2: Perform scroll when needsScroll is true
   useEffect(() => {
-    if (needsScroll) {
+    if (needsScroll) { // Check needsScroll first
       const attemptScroll = () => {
-        if (scrollAreaRef.current) {
+        // Check scrollAreaRef.current right before using it
+        if (scrollAreaRef.current) { 
           const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
           if (scrollViewport) {
             scrollViewport.scrollTop = scrollViewport.scrollHeight;
           }
         }
+        setNeedsScroll(false); // Reset the flag *after* attempting scroll
       };
 
       // Defer scroll to allow DOM updates
-      const timeoutId = setTimeout(() => {
-        attemptScroll();
-        setNeedsScroll(false); // Reset the flag after attempting scroll
-      }, 0);
+      const timeoutId = setTimeout(attemptScroll, 0);
 
       return () => {
         clearTimeout(timeoutId);
       };
     }
-  }, [needsScroll]); // Removed scrollAreaRef from deps as it's stable
+  }, [needsScroll]); // Only depend on needsScroll. scrollAreaRef is stable and accessed via closure.
 
   const handleSendMessage = async () => {
     if (!inputText.trim() && !state.isChatLoading) return;
