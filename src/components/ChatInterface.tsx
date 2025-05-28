@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'; // Added useCallback
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; // Added useMemo
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Mic, Send, Loader2, MessageSquareIcon } from 'lucide-react';
@@ -22,11 +22,16 @@ const ChatInterface = () => {
 
   const handleSpeechResult = useCallback((finalTranscript: string) => {
     setInputText(finalTranscript);
-  }, []); // setInputText is stable
+  }, [setInputText]); 
 
-  const handleSpeechError = useCallback((event: SpeechRecognitionError) => { // Added SpeechRecognitionError type
+  const handleSpeechError = useCallback((event: SpeechRecognitionError) => { 
     toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
-  }, [toast]); // toast is stable
+  }, [toast]); 
+
+  const speechToTextOptions = useMemo(() => ({
+    onResult: handleSpeechResult,
+    onError: handleSpeechError,
+  }), [handleSpeechResult, handleSpeechError]);
 
   const {
     isListening,
@@ -35,10 +40,7 @@ const ChatInterface = () => {
     startListening,
     stopListening,
     hasRecognitionSupport,
-  } = useSpeechToText({
-    onResult: handleSpeechResult,
-    onError: handleSpeechError,
-  });
+  } = useSpeechToText(speechToTextOptions);
   
   useEffect(() => {
     if (transcript) {
@@ -55,6 +57,7 @@ const ChatInterface = () => {
   useEffect(() => {
     if (chatContainerRef.current) {
       const element = chatContainerRef.current;
+      // Defer scroll to allow DOM updates
       setTimeout(() => {
         element.scrollTop = element.scrollHeight;
       }, 0);
