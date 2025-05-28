@@ -1,14 +1,14 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; // Added useMemo
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Mic, Send, Loader2, MessageSquareIcon } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import { useAppContext } from './AppProvider';
 import type { ChatMessage as ChatMessageType, SpeechRecognitionError } from '@/lib/types';
-import { generateStoriesFromContent } from '@/ai/flows/generate-stories-from-content';
+import { remiChat } from '@/ai/flows/remi-chat-flow'; // Changed import
 import { useToast } from '@/hooks/use-toast';
 import useSpeechToText from '@/hooks/use-speech-to-text';
 
@@ -75,23 +75,16 @@ const ChatInterface = () => {
       relatedContentId: selectedContent?.id,
     };
     dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMessage });
+    const currentInputText = inputText.trim();
     setInputText('');
     dispatch({ type: 'SET_CHAT_LOADING', payload: true });
 
     try {
-      let aiResponseText: string;
-      if (selectedContent?.summary) {
-        const result = await generateStoriesFromContent({
-          prompt: userMessage.text,
-          contentSummary: selectedContent.summary,
-        });
-        aiResponseText = result.story;
-      } else {
-        aiResponseText = "I can help you best if you select some content. What would you like to talk about?";
-        if (userMessage.text.toLowerCase().includes("story") || userMessage.text.toLowerCase().includes("tell me about")) {
-          aiResponseText = "Please select an item from your content list first, then I can tell you a story or discuss it."
-        }
-      }
+      const result = await remiChat({
+        userMessage: currentInputText,
+        contentSummary: selectedContent?.summary,
+      });
+      const aiResponseText = result.aiResponse;
       
       const aiMessage: ChatMessageType = {
         id: crypto.randomUUID(),
@@ -135,7 +128,7 @@ const ChatInterface = () => {
       <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto">
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
-            Ask about your selected content or tell Remi to create a story!
+            Chat with Remi! Ask questions, or select content to discuss or create stories about.
           </div>
         )}
         {state.chatMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)}

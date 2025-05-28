@@ -100,8 +100,8 @@ const UploadSection = () => {
 
         if (aiInput) {
           // Assuming contentToText is preferred over summarizeContent based on previous implementations
-          const summaryResult = await contentToText(aiInput.contentType, aiInput.contentData);
-          dispatch({ type: 'UPDATE_CONTENT_SUMMARY', payload: { id, summary: summaryResult.text() } }); // Use .text() for Genkit v1.x
+          const summaryResult = await contentToText(aiInput);
+          dispatch({ type: 'UPDATE_CONTENT_SUMMARY', payload: { id, summary: summaryResult.summary } });
           toast({ title: "Content Added", description: `${itemName} added and summary generated.` });
         } else {
           // This branch might not be typical if all uploads trigger summarization
