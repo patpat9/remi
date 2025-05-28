@@ -16,8 +16,7 @@ import useSpeechToText from '@/hooks/use-speech-to-text';
 const ChatInterface = () => {
   const { state, dispatch } = useAppContext();
   const [inputText, setInputText] = useState('');
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const [needsScroll, setNeedsScroll] = useState(false); // New state for controlling scroll
+  const scrollAreaRef = useRef<HTMLDivElement>(null); // Keep ref for potential future use
   const { toast } = useToast();
 
   const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
@@ -50,40 +49,34 @@ const ChatInterface = () => {
     }
   }, [speechError, toast]);
 
-  // Effect 1: Detect new messages and signal a scroll is needed
-  useEffect(() => {
-    if (state.chatMessages.length > 0) {
-      // Check if the last message is new or if it's the initial load
-      // This simple check assumes new messages are appended.
-      // A more robust check might involve comparing message IDs or timestamps
-      // if the message list could be reordered or messages pre-loaded.
-      setNeedsScroll(true);
-    }
-  }, [state.chatMessages]);
+  // Temporarily removed scrolling logic to diagnose Max Update Depth error
+  // const [needsScroll, setNeedsScroll] = useState(false);
+  // // Effect 1: Detect new messages and signal a scroll is needed
+  // useEffect(() => {
+  //   if (state.chatMessages.length > 0) {
+  //     setNeedsScroll(true);
+  //   }
+  // }, [state.chatMessages]);
 
-  // Effect 2: Perform scroll when needsScroll is true
-  useEffect(() => {
-    if (needsScroll) {
-      const attemptScroll = () => {
-        if (scrollAreaRef.current) {
-          const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
-          if (scrollViewport) {
-            scrollViewport.scrollTop = scrollViewport.scrollHeight;
-          }
-        }
-      };
+  // // Effect 2: Perform scroll when needsScroll is true
+  // useEffect(() => {
+  //   if (needsScroll) {
+  //     setNeedsScroll(false); // Reset the flag synchronously
 
-      // Schedule the scroll attempt
-      const timeoutId = setTimeout(attemptScroll, 0);
+  //     const timeoutId = setTimeout(() => {
+  //       if (scrollAreaRef.current) {
+  //         const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
+  //         if (scrollViewport) {
+  //           scrollViewport.scrollTop = scrollViewport.scrollHeight;
+  //         }
+  //       }
+  //     }, 0);
       
-      // Reset the flag synchronously to prevent re-triggering this effect unnecessarily
-      setNeedsScroll(false); 
-
-      return () => {
-        clearTimeout(timeoutId);
-      };
-    }
-  }, [needsScroll]); // Only depend on needsScroll.
+  //     return () => {
+  //       clearTimeout(timeoutId);
+  //     };
+  //   }
+  // }, [needsScroll]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim() && !state.isChatLoading) return;
