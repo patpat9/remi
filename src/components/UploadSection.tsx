@@ -5,13 +5,13 @@ import React, { useState, ChangeEvent, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+// Textarea removed as it's no longer used for text/document upload
 import { Label } from '@/components/ui/label';
 import { ImageIcon, YoutubeIcon, FileAudioIcon, FileTextIcon, UploadCloud } from 'lucide-react';
 import AppLogo from './AppLogo';
 import { useAppContext } from './AppProvider';
 import type { ContentType, ContentItem } from '@/lib/types';
-import { contentToText, SummarizeContentInput } from '@/ai/flows/summarize-content'; // Removed summarizeContent as it's unused
+import { contentToText, SummarizeContentInput } from '@/ai/flows/summarize-content';
 import { useToast } from '@/hooks/use-toast';
 
 const UploadSection = () => {
@@ -19,14 +19,13 @@ const UploadSection = () => {
   const [dialogOpen, setDialogOpen] = useState<Record<Exclude<ContentType, 'photo'>, boolean>>({
     youtube: false,
     audio: false,
-    text: false,
+    text: false, // This key remains 'text' internally, corresponds to 'Document' in UI
   });
   
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [textContent, setTextContent] = useState('');
-  const [textTitle, setTextTitle] = useState('');
+  const [documentFile, setDocumentFile] = useState<File | null>(null); // New state for document file
   const { toast } = useToast();
 
   const handleOpenChange = (type: Exclude<ContentType, 'photo'>, open: boolean) => {
@@ -34,8 +33,7 @@ const UploadSection = () => {
     if (!open) { // Reset states on dialog close
       setYoutubeUrl('');
       setAudioFile(null);
-      setTextContent('');
-      setTextTitle('');
+      setDocumentFile(null); // Reset document file
     }
   };
 
@@ -82,11 +80,12 @@ const UploadSection = () => {
         itemName = audioFile.name;
         const dataUrl = await readFileAsDataURL(audioFile);
         newItemData = { id, type, name: audioFile.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
-        aiInput = { contentType: 'audio', contentData: dataUrl }; // Potentially large, be mindful
-      } else if (type === 'text' && textContent) {
-        itemName = textTitle || 'Untitled Text';
-        newItemData = { id, type, name: itemName, data: textContent, originalData: textContent, createdAt: currentTimeISO };
-        aiInput = { contentType: 'text', contentData: textContent };
+        aiInput = { contentType: 'audio', contentData: dataUrl };
+      } else if (type === 'text' && documentFile) { // Updated to use documentFile
+        itemName = documentFile.name;
+        const dataUrl = await readFileAsDataURL(documentFile);
+        newItemData = { id, type: 'text', name: documentFile.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
+        aiInput = { contentType: 'text', contentData: dataUrl };
       }
 
       if (newItemData) {
@@ -95,16 +94,14 @@ const UploadSection = () => {
         dispatch({ type: 'SELECT_CONTENT', payload: id }); 
 
         if (type !== 'photo') {
-           handleOpenChange(type as Exclude<ContentType, 'photo'>, false); // Close dialog for non-photo types
+           handleOpenChange(type as Exclude<ContentType, 'photo'>, false);
         }
 
         if (aiInput) {
-          // Assuming contentToText is preferred over summarizeContent based on previous implementations
           const summaryResult = await contentToText(aiInput);
           dispatch({ type: 'UPDATE_CONTENT_SUMMARY', payload: { id, summary: summaryResult.summary } });
           toast({ title: "Content Added", description: `${itemName} added and summary generated.` });
         } else {
-          // This branch might not be typical if all uploads trigger summarization
           dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
           toast({ title: "Content Added", description: `${itemName} added.` });
         }
@@ -123,7 +120,7 @@ const UploadSection = () => {
       const file = event.target.files[0];
       await performUploadProcessing('photo', file);
       if (event.target) {
-        event.target.value = ""; // Reset file input to allow selecting the same file again
+        event.target.value = ""; 
       }
     }
   };
@@ -137,7 +134,7 @@ const UploadSection = () => {
   }> = [
     { type: 'photo', icon: <ImageIcon className="mr-2 h-5 w-5" />, label: 'Photo' },
     { 
-      type: 'youtube' as ContentType, 
+      type: 'youtube', 
       icon: <YoutubeIcon className="mr-2 h-5 w-5" />, 
       label: 'YouTube', 
       dialogContent: (
@@ -146,7 +143,7 @@ const UploadSection = () => {
       getIsDialogDisabled: () => !youtubeUrl,
     },
     { 
-      type: 'audio' as ContentType, 
+      type: 'audio', 
       icon: <FileAudioIcon className="mr-2 h-5 w-5" />, 
       label: 'Audio', 
       dialogContent: (
@@ -155,16 +152,17 @@ const UploadSection = () => {
       getIsDialogDisabled: () => !audioFile,
     },
     { 
-      type: 'text' as ContentType, 
+      type: 'text', // Internal type remains 'text'
       icon: <FileTextIcon className="mr-2 h-5 w-5" />, 
-      label: 'Text', 
+      label: 'Document', // UI label changed
       dialogContent: (
-        <div className="space-y-2">
-          <Input placeholder="Title (optional)" value={textTitle} onChange={(e) => setTextTitle(e.target.value)} />
-          <Textarea placeholder="Paste your text here..." value={textContent} onChange={(e) => setTextContent(e.target.value)} rows={5} />
-        </div>
+        <Input 
+          type="file" 
+          accept=".txt,.pdf,.md,.rtf,.doc,.docx,.odt,text/*" // Common text/document types
+          onChange={(e: ChangeEvent<HTMLInputElement>) => e.target.files && setDocumentFile(e.target.files[0])} 
+        />
       ),
-      getIsDialogDisabled: () => !textContent,
+      getIsDialogDisabled: () => !documentFile,
     },
   ];
 
@@ -194,7 +192,6 @@ const UploadSection = () => {
               </React.Fragment>
             );
           }
-          // For other types, use Dialog
           return (
             <Dialog 
               key={opt.type} 

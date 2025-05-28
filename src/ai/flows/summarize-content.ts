@@ -14,7 +14,7 @@ import {z} from 'genkit';
 
 const SummarizeContentInputSchema = z.object({
   contentType: z.enum(['photo', 'youtube', 'audio', 'text']).describe('The type of the content being summarized.'),
-  contentData: z.string().describe('The content data to be summarized. For photos, this should be a data URI. For YouTube, this should be the URL. For audio and text, this should be the content itself.'),
+  contentData: z.string().describe('The content data to be summarized. For photos, audio, and text (from file upload), this should be a data URI. For YouTube, this should be the URL. For text (if ever raw), this would be the content itself.'),
 });
 export type SummarizeContentInput = z.infer<typeof SummarizeContentInputSchema>;
 
@@ -25,12 +25,19 @@ export type SummarizeContentOutput = z.infer<typeof SummarizeContentOutputSchema
 
 // This function is directly used by UploadSection.tsx
 export async function contentToText(input: SummarizeContentInput) {
-  // The 'data' here is either a data URI (for photo/audio) or a URL (for youtube) or text content
+  // The 'data' here is either a data URI (for photo/audio/text file) or a URL (for youtube)
   let promptConfig: any = {
     prompt: [],
   };
 
-  promptConfig.prompt.push({ media: { url: input.contentData } });
+  if (input.contentType === 'youtube' || (input.contentType === 'text' && !input.contentData.startsWith('data:'))) {
+    // For YouTube URLs or raw text (if we were to support it directly, not primary path now)
+    promptConfig.prompt.push({ text: input.contentData });
+  } else {
+    // For photos, audio files, and text files (as data URIs)
+    promptConfig.prompt.push({ media: { url: input.contentData } });
+  }
+  
   promptConfig.prompt.push({ text: "You are an AI assistant that specializes in summarizing content. You will be provided content of a specific type, and your task is to generate a concise summary of the content. Content Type: " + input.contentType });
 
   
