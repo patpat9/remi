@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Mic, Send, Loader2, MessageSquareIcon } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import { useAppContext } from './AppProvider';
-import type { ChatMessage as ChatMessageType, SpeechRecognitionError } from '@/lib/types';
-import { remiChat } from '@/ai/flows/remi-chat-flow'; // Changed import
+import type { ChatMessage as ChatMessageType, SpeechRecognitionError, ContentItem } from '@/lib/types';
+import { remiChat, RemiChatInput } from '@/ai/flows/remi-chat-flow';
 import { useToast } from '@/hooks/use-toast';
 import useSpeechToText from '@/hooks/use-speech-to-text';
 
@@ -18,15 +18,13 @@ const ChatInterface = () => {
   const { toast } = useToast();
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
-
   const handleSpeechResult = useCallback((finalTranscript: string) => {
     setInputText(finalTranscript);
-  }, [setInputText]); 
+  }, [setInputText]);
 
-  const handleSpeechError = useCallback((event: SpeechRecognitionError) => { 
+  const handleSpeechError = useCallback((event: SpeechRecognitionError) => {
     toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
-  }, [toast]); 
+  }, [toast]);
 
   const speechToTextOptions = useMemo(() => ({
     onResult: handleSpeechResult,
@@ -41,7 +39,7 @@ const ChatInterface = () => {
     stopListening,
     hasRecognitionSupport,
   } = useSpeechToText(speechToTextOptions);
-  
+
   useEffect(() => {
     if (transcript) {
       setInputText(transcript);
@@ -57,7 +55,6 @@ const ChatInterface = () => {
   useEffect(() => {
     if (chatContainerRef.current) {
       const element = chatContainerRef.current;
-      // Defer scroll to allow DOM updates
       setTimeout(() => {
         element.scrollTop = element.scrollHeight;
       }, 0);
@@ -72,7 +69,6 @@ const ChatInterface = () => {
       sender: 'user',
       text: inputText.trim(),
       timestamp: new Date(),
-      relatedContentId: selectedContent?.id,
     };
     dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMessage });
     const currentInputText = inputText.trim();
@@ -80,18 +76,28 @@ const ChatInterface = () => {
     dispatch({ type: 'SET_CHAT_LOADING', payload: true });
 
     try {
-      const result = await remiChat({
+      const availableContentForAI = state.contentItems.map(item => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        information: item.type === 'text' ?
+          (item.data || "No text content available for this item.") :
+          (item.summary || `A summary for this ${item.type} content (name: ${item.name}) is not yet available or applicable.`)
+      }));
+
+      const aiInput: RemiChatInput = {
         userMessage: currentInputText,
-        contentSummary: selectedContent?.summary,
-      });
+        availableContent: availableContentForAI,
+      };
+
+      const result = await remiChat(aiInput);
       const aiResponseText = result.aiResponse;
-      
+
       const aiMessage: ChatMessageType = {
         id: crypto.randomUUID(),
         sender: 'ai',
         text: aiResponseText,
         timestamp: new Date(),
-        relatedContentId: selectedContent?.id,
       };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: aiMessage });
     } catch (error) {
@@ -128,7 +134,7 @@ const ChatInterface = () => {
       <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto">
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
-            Chat with Remi! Ask questions, or select content to discuss or create stories about.
+            Chat with Remi about your uploaded content, or ask anything else!
           </div>
         )}
         {state.chatMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)}

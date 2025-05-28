@@ -11,10 +11,16 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
+const UploadedContentInfoSchema = z.object({
+  id: z.string(),
+  name: z.string().describe("The name or title of the content item."),
+  type: z.enum(['photo', 'youtube', 'audio', 'text']).describe("The type of the content item."),
+  information: z.string().describe("For 'text' type, this is the full text content. For 'photo', 'youtube', and 'audio' types, this is an AI-generated summary of the content. If a summary is not available for non-text types, this might be a placeholder message.")
+});
+
 const RemiChatInputSchema = z.object({
   userMessage: z.string().describe("The user's message."),
-  contentSummary: z.string().optional().describe('A summary of the currently selected content, if any.'),
-  userName: z.string().optional().describe("The user's name, defaults to 'User'."),
+  availableContent: z.array(UploadedContentInfoSchema).optional().describe('An array of all available content items, including their name, type, and text/summary.'),
 });
 export type RemiChatInput = z.infer<typeof RemiChatInputSchema>;
 
@@ -31,29 +37,29 @@ const prompt = ai.definePrompt({
   name: 'remiChatPrompt',
   input: {schema: RemiChatInputSchema},
   output: {schema: RemiChatOutputSchema},
-  prompt: `You are Remi, a friendly and helpful AI content companion. Your goal is to chat with the user and assist them.
-User's name is {{#if userName}}{{userName}}{{else}}User{{/if}}.
+  prompt: `You are Remi, a friendly and helpful AI content companion. Your main role is to discuss and answer questions based on the content the user has uploaded.
 
-{{#if contentSummary}}
-The user has selected some content. Here's a summary of it:
----
-{{{contentSummary}}}
----
-- If the user asks questions like "What is this about?", "Tell me about this content", "What's this selection?", or asks for a summary of the selected item, use the provided content summary to answer.
-- If the user asks you to "tell a story about this" or "create a story based on this", you can use the summary to weave a creative narrative.
-- For other questions or general chat, respond naturally. You don't need to always refer to the content unless it's relevant.
+{{#if availableContent.length}}
+You have access to the following uploaded content items.
+For items of type 'text', the full text is provided. For other types ('photo', 'youtube', 'audio'), a summary is provided.
+Please use this information to answer the user's questions and engage in conversation about their content. If the user asks a general question, try to see if it relates to any of the uploaded content. If it's unrelated, you can chat generally.
+
+Available Content:
+{{#each availableContent}}
+  - Item ID: {{this.id}}
+    Item Name: "{{this.name}}"
+    Type: {{this.type}}
+    Information: {{{this.information}}}
+  ---
+{{/each}}
 {{else}}
-The user has not selected any content.
-- You can chat about general topics.
-- If they ask about specific content or stories related to content, gently guide them to select an item from their list first.
+No content has been uploaded yet. You can chat with the user generally, or encourage them to upload some content to discuss.
 {{/if}}
 
-Engage in a helpful and conversational manner. If you are unsure how to respond or if the request is ambiguous, you can ask for clarification.
-Keep your responses concise and friendly.
-
-User: {{{userMessage}}}
+User's Message: {{{userMessage}}}
 Remi:`,
 });
+
 
 const remiChatFlow = ai.defineFlow(
   {
