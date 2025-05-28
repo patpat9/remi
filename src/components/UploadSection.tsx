@@ -12,6 +12,13 @@ import { useAppContext } from './AppProvider';
 import type { ContentType, ContentItem } from '@/lib/types';
 import { contentToText, SummarizeContentInput } from '@/ai/flows/summarize-content';
 import { useToast } from '@/hooks/use-toast';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configure pdfjs-dist worker
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+}
+
 
 const UploadSection = () => {
   const { dispatch } = useAppContext();
@@ -21,15 +28,14 @@ const UploadSection = () => {
   });
   
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const documentInputRef = useRef<HTMLInputElement>(null); // Ref for document file input
+  const documentInputRef = useRef<HTMLInputElement>(null);
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  // documentFile state is no longer needed as we'll use the input's event directly
   const { toast } = useToast();
 
-  const handleOpenChange = (type: Exclude<ContentType, 'photo' | 'text'>, open: boolean) => {
+  const handleOpenChange = (type: Exclude<ContentType, 'photo' | 'text' | 'document'>, open: boolean) => {
     setDialogOpen(prev => ({ ...prev, [type]: open }));
-    if (!open) { // Reset states on dialog close
+    if (!open) {
       setYoutubeUrl('');
       setAudioFile(null);
     }
@@ -44,22 +50,43 @@ const UploadSection = () => {
     });
   };
 
+  const readFileAsText = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+      reader.readAsText(file);
+    });
+  };
+
+  const parsePdfToText = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n';
+    }
+    return fullText;
+  };
+
+
   const performUploadProcessing = async (type: ContentType, file?: File) => {
     const id = crypto.randomUUID();
-    let newItemData: Omit<ContentItem, 'summary' | 'thumbnail' | 'id' | 'createdAt'> & { createdAt: string; id: string } | null = null;
+    let newItemDataPartial: Omit<ContentItem, 'summary' | 'thumbnail' | 'id' | 'createdAt' | 'data' | 'originalData'> & { createdAt: string; id: string; data?: string; originalData?: string; } | null = null;
     let aiInput: SummarizeContentInput | null = null;
     let thumbnail: string | undefined = undefined;
     let itemName: string = 'Uploaded Content';
 
     try {
       dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: true } });
-
       const currentTimeISO = new Date().toISOString();
 
       if (type === 'photo' && file) {
         itemName = file.name;
         const dataUrl = await readFileAsDataURL(file);
-        newItemData = { id, type, name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
+        newItemDataPartial = { id, type, name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'photo', contentData: dataUrl };
         thumbnail = dataUrl;
       } else if (type === 'youtube' && youtubeUrl) {
@@ -72,26 +99,38 @@ const UploadSection = () => {
         const videoIdMatch = youtubeUrl.match(/(?:youtu\.be\/|watch\?v=)([\w-]+)/);
         const videoId = videoIdMatch ? videoIdMatch[1] : null;
         thumbnail = videoId ? `https://img.youtube.com/vi/${videoId}/0.jpg` : undefined;
-        newItemData = { id, type, name: itemName, data: youtubeUrl, originalData: youtubeUrl, createdAt: currentTimeISO };
+        newItemDataPartial = { id, type, name: itemName, data: youtubeUrl, originalData: youtubeUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'youtube', contentData: youtubeUrl };
       } else if (type === 'audio' && audioFile) {
         itemName = audioFile.name;
         const dataUrl = await readFileAsDataURL(audioFile);
-        newItemData = { id, type, name: audioFile.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
+        newItemDataPartial = { id, type, name: audioFile.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'audio', contentData: dataUrl };
-      } else if (type === 'text' && file) { 
+      } else if (type === 'text' && file) {
         itemName = file.name;
-        const dataUrl = await readFileAsDataURL(file);
-        newItemData = { id, type: 'text', name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
-        aiInput = { contentType: 'text', contentData: dataUrl };
+        if (file.type === 'application/pdf') {
+          const pdfDataUri = await readFileAsDataURL(file);
+          const extractedText = await parsePdfToText(file);
+          newItemDataPartial = { id, type: 'text', name: file.name, data: extractedText, originalData: pdfDataUri, createdAt: currentTimeISO };
+          aiInput = { contentType: 'text', contentData: extractedText };
+        } else {
+          const rawText = await readFileAsText(file);
+          newItemDataPartial = { id, type: 'text', name: file.name, data: rawText, originalData: rawText, createdAt: currentTimeISO };
+          aiInput = { contentType: 'text', contentData: rawText };
+        }
       }
 
-      if (newItemData) {
-        const contentItem: ContentItem = { ...newItemData, thumbnail };
+      if (newItemDataPartial && newItemDataPartial.data !== undefined) {
+        const contentItem: ContentItem = { 
+          ...newItemDataPartial, 
+          data: newItemDataPartial.data, // Ensure data is not undefined
+          originalData: newItemDataPartial.originalData,
+          thumbnail 
+        };
         dispatch({ type: 'ADD_CONTENT', payload: contentItem });
         dispatch({ type: 'SELECT_CONTENT', payload: id }); 
 
-        if (type === 'youtube' || type === 'audio') { // Only for dialog based uploads
+        if (type === 'youtube' || type === 'audio') {
            handleOpenChange(type as Exclude<ContentType, 'photo' | 'text'>, false);
         }
 
@@ -129,10 +168,10 @@ const UploadSection = () => {
     label: string;
     dialogContent?: JSX.Element;
     getIsDialogDisabled?: () => boolean;
-    onClick?: () => void; // For direct file picker
-    fileInputRef?: React.RefObject<HTMLInputElement>; // For direct file picker
-    fileAccept?: string; // For direct file picker
-    onFileChange?: (event: ChangeEvent<HTMLInputElement>) => void; // For direct file picker
+    onClick?: () => void; 
+    fileInputRef?: React.RefObject<HTMLInputElement>; 
+    fileAccept?: string; 
+    onFileChange?: (event: ChangeEvent<HTMLInputElement>) => void; 
   }> = [
     { 
       type: 'photo', 
@@ -167,7 +206,7 @@ const UploadSection = () => {
       label: 'Document', 
       onClick: () => documentInputRef.current?.click(),
       fileInputRef: documentInputRef,
-      fileAccept: ".txt,.pdf,.md,.rtf,.doc,.docx,.odt,text/*",
+      fileAccept: ".txt,.pdf,.md,.rtf,.doc,.docx,.odt,text/*,application/pdf",
       onFileChange: (e) => handleFileSelected(e, 'text'),
     },
   ];
@@ -177,7 +216,7 @@ const UploadSection = () => {
       <AppLogo />
       <div className="grid grid-cols-2 gap-3">
         {uploadOptions.map(opt => {
-          if (opt.onClick && opt.fileInputRef && opt.onFileChange) { // Direct file picker options
+          if (opt.onClick && opt.fileInputRef && opt.onFileChange) { 
             return (
               <React.Fragment key={opt.type}>
                 <Button
@@ -198,7 +237,7 @@ const UploadSection = () => {
               </React.Fragment>
             );
           }
-          // Dialog based options
+          
           return (
             <Dialog 
               key={opt.type} 
@@ -224,7 +263,7 @@ const UploadSection = () => {
                     <Button variant="outline">Cancel</Button>
                   </DialogClose>
                   <Button 
-                    onClick={() => performUploadProcessing(opt.type)} 
+                    onClick={() => performUploadProcessing(opt.type, opt.type === 'audio' ? audioFile : undefined)} 
                     disabled={opt.getIsDialogDisabled ? opt.getIsDialogDisabled() : false}
                   >
                     Add Content
@@ -240,5 +279,3 @@ const UploadSection = () => {
 };
 
 export default UploadSection;
-
-    
