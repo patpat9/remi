@@ -6,17 +6,17 @@ export interface ContentItem {
   type: ContentType;
   name: string;
   data: string; // URL for photo/youtube/audio (or data URI for uploaded), text content for text
-  originalData?: File | string; // To store original file or youtube URL
+  originalData?: string; // Store dataUrl for files, or original text/URL for others
   thumbnail?: string; // Data URI or URL
   summary?: string;
-  createdAt: Date;
+  createdAt: string; // Changed from Date to string (ISO date string)
 }
 
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'ai';
   text: string;
-  timestamp: Date;
+  timestamp: Date; // This is fine as ChatMessage is typically created and managed client-side
   relatedContentId?: string; // Optionally link message to a piece of content
 }
 

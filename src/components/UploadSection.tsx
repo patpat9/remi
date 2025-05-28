@@ -11,7 +11,7 @@ import { ImageIcon, YoutubeIcon, FileAudioIcon, FileTextIcon, UploadCloud } from
 import AppLogo from './AppLogo';
 import { useAppContext } from './AppProvider';
 import type { ContentType, ContentItem } from '@/lib/types';
-import { summarizeContent, SummarizeContentInput } from '@/ai/flows/summarize-content';
+import { contentToText, SummarizeContentInput } from '@/ai/flows/summarize-content'; // Removed summarizeContent as it's unused
 import { useToast } from '@/hooks/use-toast';
 
 const UploadSection = () => {
@@ -50,7 +50,7 @@ const UploadSection = () => {
 
   const performUploadProcessing = async (type: ContentType, fileForPhoto?: File) => {
     const id = crypto.randomUUID();
-    let newItem: Omit<ContentItem, 'summary' | 'thumbnail'> | null = null;
+    let newItemData: Omit<ContentItem, 'summary' | 'thumbnail' | 'id' | 'createdAt'> & { createdAt: string; id: string } | null = null;
     let aiInput: SummarizeContentInput | null = null;
     let thumbnail: string | undefined = undefined;
     let itemName: string = 'Uploaded Content';
@@ -58,10 +58,12 @@ const UploadSection = () => {
     try {
       dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: true } });
 
+      const currentTimeISO = new Date().toISOString();
+
       if (type === 'photo' && fileForPhoto) {
         itemName = fileForPhoto.name;
         const dataUrl = await readFileAsDataURL(fileForPhoto);
-        newItem = { id, type, name: fileForPhoto.name, data: dataUrl, originalData: fileForPhoto, createdAt: new Date() };
+        newItemData = { id, type, name: fileForPhoto.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'photo', contentData: dataUrl };
         thumbnail = dataUrl;
       } else if (type === 'youtube' && youtubeUrl) {
@@ -74,21 +76,21 @@ const UploadSection = () => {
         const videoIdMatch = youtubeUrl.match(/(?:youtu\.be\/|watch\?v=)([\w-]+)/);
         const videoId = videoIdMatch ? videoIdMatch[1] : null;
         thumbnail = videoId ? `https://img.youtube.com/vi/${videoId}/0.jpg` : undefined;
-        newItem = { id, type, name: itemName, data: youtubeUrl, originalData: youtubeUrl, createdAt: new Date() };
+        newItemData = { id, type, name: itemName, data: youtubeUrl, originalData: youtubeUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'youtube', contentData: youtubeUrl };
       } else if (type === 'audio' && audioFile) {
         itemName = audioFile.name;
         const dataUrl = await readFileAsDataURL(audioFile);
-        newItem = { id, type, name: audioFile.name, data: dataUrl, originalData: audioFile, createdAt: new Date() };
+        newItemData = { id, type, name: audioFile.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'audio', contentData: dataUrl }; // Potentially large, be mindful
       } else if (type === 'text' && textContent) {
         itemName = textTitle || 'Untitled Text';
-        newItem = { id, type, name: itemName, data: textContent, originalData: textContent, createdAt: new Date() };
+        newItemData = { id, type, name: itemName, data: textContent, originalData: textContent, createdAt: currentTimeISO };
         aiInput = { contentType: 'text', contentData: textContent };
       }
 
-      if (newItem) {
-        const contentItem: ContentItem = { ...newItem, thumbnail };
+      if (newItemData) {
+        const contentItem: ContentItem = { ...newItemData, thumbnail };
         dispatch({ type: 'ADD_CONTENT', payload: contentItem });
         dispatch({ type: 'SELECT_CONTENT', payload: id }); 
 
@@ -97,8 +99,9 @@ const UploadSection = () => {
         }
 
         if (aiInput) {
-          const summaryResult = await summarizeContent(aiInput);
-          dispatch({ type: 'UPDATE_CONTENT_SUMMARY', payload: { id, summary: summaryResult.summary } });
+          // Assuming contentToText is preferred over summarizeContent based on previous implementations
+          const summaryResult = await contentToText(aiInput.contentType, aiInput.contentData);
+          dispatch({ type: 'UPDATE_CONTENT_SUMMARY', payload: { id, summary: summaryResult.text() } }); // Use .text() for Genkit v1.x
           toast({ title: "Content Added", description: `${itemName} added and summary generated.` });
         } else {
           // This branch might not be typical if all uploads trigger summarization
