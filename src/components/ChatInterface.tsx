@@ -53,32 +53,37 @@ const ChatInterface = () => {
   // Effect 1: Detect new messages and signal a scroll is needed
   useEffect(() => {
     if (state.chatMessages.length > 0) {
+      // Check if the last message is new or if it's the initial load
+      // This simple check assumes new messages are appended.
+      // A more robust check might involve comparing message IDs or timestamps
+      // if the message list could be reordered or messages pre-loaded.
       setNeedsScroll(true);
     }
   }, [state.chatMessages]);
 
   // Effect 2: Perform scroll when needsScroll is true
   useEffect(() => {
-    if (needsScroll) { // Check needsScroll first
+    if (needsScroll) {
       const attemptScroll = () => {
-        // Check scrollAreaRef.current right before using it
-        if (scrollAreaRef.current) { 
+        if (scrollAreaRef.current) {
           const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
           if (scrollViewport) {
             scrollViewport.scrollTop = scrollViewport.scrollHeight;
           }
         }
-        setNeedsScroll(false); // Reset the flag *after* attempting scroll
       };
 
-      // Defer scroll to allow DOM updates
+      // Schedule the scroll attempt
       const timeoutId = setTimeout(attemptScroll, 0);
+      
+      // Reset the flag synchronously to prevent re-triggering this effect unnecessarily
+      setNeedsScroll(false); 
 
       return () => {
         clearTimeout(timeoutId);
       };
     }
-  }, [needsScroll]); // Only depend on needsScroll. scrollAreaRef is stable and accessed via closure.
+  }, [needsScroll]); // Only depend on needsScroll.
 
   const handleSendMessage = async () => {
     if (!inputText.trim() && !state.isChatLoading) return;
