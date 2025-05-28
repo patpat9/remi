@@ -52,6 +52,7 @@ const ChatInterface = () => {
   useEffect(() => {
     const attemptScroll = () => {
       if (scrollAreaRef.current) {
+        // Query for the viewport element within the ScrollArea
         const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
         if (scrollViewport) {
           scrollViewport.scrollTop = scrollViewport.scrollHeight;
@@ -59,12 +60,12 @@ const ChatInterface = () => {
       }
     };
 
-    // Defer scroll to the next animation frame
+    // Defer scroll to the end of the event loop
     // This allows the DOM to update and dimensions to be calculated before scrolling
-    const animationFrameId = requestAnimationFrame(attemptScroll);
+    const timeoutId = setTimeout(attemptScroll, 0);
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      clearTimeout(timeoutId);
     };
   }, [state.chatMessages]);
 
@@ -170,4 +171,3 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
-
