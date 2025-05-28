@@ -1,10 +1,10 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Keep useRef
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// ScrollArea import removed
+// ScrollArea import should be removed
 import { Mic, Send, Loader2, MessageSquareIcon } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import { useAppContext } from './AppProvider';
@@ -17,6 +17,7 @@ const ChatInterface = () => {
   const { state, dispatch } = useAppContext();
   const [inputText, setInputText] = useState('');
   const { toast } = useToast();
+  const chatContainerRef = useRef<HTMLDivElement>(null); // Renamed for clarity, or use existing scrollAreaRef if it points to the div
 
   const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
 
@@ -48,7 +49,16 @@ const ChatInterface = () => {
     }
   }, [speechError, toast]);
 
-  // Custom scrolling logic and related state/refs (needsScroll, scrollAreaRef) have been removed.
+  // Simplified useEffect for auto-scrolling the div
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      const element = chatContainerRef.current;
+      // Using setTimeout to ensure DOM has updated scrollHeight
+      setTimeout(() => {
+        element.scrollTop = element.scrollHeight;
+      }, 0);
+    }
+  }, [state.chatMessages]); // Scroll when messages change
 
   const handleSendMessage = async () => {
     if (!inputText.trim() && !state.isChatLoading) return;
@@ -118,8 +128,8 @@ const ChatInterface = () => {
           Chat with Remi
         </h3>
       </div>
-      {/* Replaced ScrollArea with a simple div with overflow-y-auto */}
-      <div className="flex-1 p-4 overflow-y-auto">
+      {/* This is the div for messages, ensure ref is applied */}
+      <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto">
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
             Ask about your selected content or tell Remi to create a story!
