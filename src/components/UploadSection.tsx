@@ -5,7 +5,6 @@ import React, { useState, ChangeEvent, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-// Textarea removed as it's no longer used for text/document upload
 import { Label } from '@/components/ui/label';
 import { ImageIcon, YoutubeIcon, FileAudioIcon, FileTextIcon, UploadCloud } from 'lucide-react';
 import AppLogo from './AppLogo';
@@ -16,24 +15,23 @@ import { useToast } from '@/hooks/use-toast';
 
 const UploadSection = () => {
   const { dispatch } = useAppContext();
-  const [dialogOpen, setDialogOpen] = useState<Record<Exclude<ContentType, 'photo'>, boolean>>({
+  const [dialogOpen, setDialogOpen] = useState<Record<Exclude<ContentType, 'photo' | 'text'>, boolean>>({
     youtube: false,
     audio: false,
-    text: false, // This key remains 'text' internally, corresponds to 'Document' in UI
   });
   
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null); // Ref for document file input
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [documentFile, setDocumentFile] = useState<File | null>(null); // New state for document file
+  // documentFile state is no longer needed as we'll use the input's event directly
   const { toast } = useToast();
 
-  const handleOpenChange = (type: Exclude<ContentType, 'photo'>, open: boolean) => {
+  const handleOpenChange = (type: Exclude<ContentType, 'photo' | 'text'>, open: boolean) => {
     setDialogOpen(prev => ({ ...prev, [type]: open }));
     if (!open) { // Reset states on dialog close
       setYoutubeUrl('');
       setAudioFile(null);
-      setDocumentFile(null); // Reset document file
     }
   };
 
@@ -46,7 +44,7 @@ const UploadSection = () => {
     });
   };
 
-  const performUploadProcessing = async (type: ContentType, fileForPhoto?: File) => {
+  const performUploadProcessing = async (type: ContentType, file?: File) => {
     const id = crypto.randomUUID();
     let newItemData: Omit<ContentItem, 'summary' | 'thumbnail' | 'id' | 'createdAt'> & { createdAt: string; id: string } | null = null;
     let aiInput: SummarizeContentInput | null = null;
@@ -58,10 +56,10 @@ const UploadSection = () => {
 
       const currentTimeISO = new Date().toISOString();
 
-      if (type === 'photo' && fileForPhoto) {
-        itemName = fileForPhoto.name;
-        const dataUrl = await readFileAsDataURL(fileForPhoto);
-        newItemData = { id, type, name: fileForPhoto.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
+      if (type === 'photo' && file) {
+        itemName = file.name;
+        const dataUrl = await readFileAsDataURL(file);
+        newItemData = { id, type, name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'photo', contentData: dataUrl };
         thumbnail = dataUrl;
       } else if (type === 'youtube' && youtubeUrl) {
@@ -81,10 +79,10 @@ const UploadSection = () => {
         const dataUrl = await readFileAsDataURL(audioFile);
         newItemData = { id, type, name: audioFile.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'audio', contentData: dataUrl };
-      } else if (type === 'text' && documentFile) { // Updated to use documentFile
-        itemName = documentFile.name;
-        const dataUrl = await readFileAsDataURL(documentFile);
-        newItemData = { id, type: 'text', name: documentFile.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
+      } else if (type === 'text' && file) { 
+        itemName = file.name;
+        const dataUrl = await readFileAsDataURL(file);
+        newItemData = { id, type: 'text', name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'text', contentData: dataUrl };
       }
 
@@ -93,8 +91,8 @@ const UploadSection = () => {
         dispatch({ type: 'ADD_CONTENT', payload: contentItem });
         dispatch({ type: 'SELECT_CONTENT', payload: id }); 
 
-        if (type !== 'photo') {
-           handleOpenChange(type as Exclude<ContentType, 'photo'>, false);
+        if (type === 'youtube' || type === 'audio') { // Only for dialog based uploads
+           handleOpenChange(type as Exclude<ContentType, 'photo' | 'text'>, false);
         }
 
         if (aiInput) {
@@ -115,10 +113,10 @@ const UploadSection = () => {
     }
   };
 
-  const handlePhotoFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>, type: 'photo' | 'text') => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      await performUploadProcessing('photo', file);
+      await performUploadProcessing(type, file);
       if (event.target) {
         event.target.value = ""; 
       }
@@ -131,8 +129,20 @@ const UploadSection = () => {
     label: string;
     dialogContent?: JSX.Element;
     getIsDialogDisabled?: () => boolean;
+    onClick?: () => void; // For direct file picker
+    fileInputRef?: React.RefObject<HTMLInputElement>; // For direct file picker
+    fileAccept?: string; // For direct file picker
+    onFileChange?: (event: ChangeEvent<HTMLInputElement>) => void; // For direct file picker
   }> = [
-    { type: 'photo', icon: <ImageIcon className="mr-2 h-5 w-5" />, label: 'Photo' },
+    { 
+      type: 'photo', 
+      icon: <ImageIcon className="mr-2 h-5 w-5" />, 
+      label: 'Photo',
+      onClick: () => photoInputRef.current?.click(),
+      fileInputRef: photoInputRef,
+      fileAccept: "image/*",
+      onFileChange: (e) => handleFileSelected(e, 'photo'),
+    },
     { 
       type: 'youtube', 
       icon: <YoutubeIcon className="mr-2 h-5 w-5" />, 
@@ -152,17 +162,13 @@ const UploadSection = () => {
       getIsDialogDisabled: () => !audioFile,
     },
     { 
-      type: 'text', // Internal type remains 'text'
+      type: 'text', 
       icon: <FileTextIcon className="mr-2 h-5 w-5" />, 
-      label: 'Document', // UI label changed
-      dialogContent: (
-        <Input 
-          type="file" 
-          accept=".txt,.pdf,.md,.rtf,.doc,.docx,.odt,text/*" // Common text/document types
-          onChange={(e: ChangeEvent<HTMLInputElement>) => e.target.files && setDocumentFile(e.target.files[0])} 
-        />
-      ),
-      getIsDialogDisabled: () => !documentFile,
+      label: 'Document', 
+      onClick: () => documentInputRef.current?.click(),
+      fileInputRef: documentInputRef,
+      fileAccept: ".txt,.pdf,.md,.rtf,.doc,.docx,.odt,text/*",
+      onFileChange: (e) => handleFileSelected(e, 'text'),
     },
   ];
 
@@ -171,32 +177,33 @@ const UploadSection = () => {
       <AppLogo />
       <div className="grid grid-cols-2 gap-3">
         {uploadOptions.map(opt => {
-          if (opt.type === 'photo') {
+          if (opt.onClick && opt.fileInputRef && opt.onFileChange) { // Direct file picker options
             return (
               <React.Fragment key={opt.type}>
                 <Button
                   variant="outline"
                   className="flex items-center justify-start text-left w-full h-12 hover:bg-accent/50"
-                  onClick={() => photoInputRef.current?.click()}
+                  onClick={opt.onClick}
                 >
                   {opt.icon}
                   <span>{opt.label}</span>
                 </Button>
                 <input
                   type="file"
-                  ref={photoInputRef}
-                  accept="image/*"
+                  ref={opt.fileInputRef}
+                  accept={opt.fileAccept}
                   style={{ display: 'none' }}
-                  onChange={handlePhotoFileSelected}
+                  onChange={opt.onFileChange}
                 />
               </React.Fragment>
             );
           }
+          // Dialog based options
           return (
             <Dialog 
               key={opt.type} 
-              open={dialogOpen[opt.type as Exclude<ContentType, 'photo'>]} 
-              onOpenChange={(open) => handleOpenChange(opt.type as Exclude<ContentType, 'photo'>, open)}
+              open={dialogOpen[opt.type as Exclude<ContentType, 'photo' | 'text'>]} 
+              onOpenChange={(open) => handleOpenChange(opt.type as Exclude<ContentType, 'photo' | 'text'>, open)}
             >
               <DialogTrigger asChild>
                 <Button variant="outline" className="flex items-center justify-start text-left w-full h-12 hover:bg-accent/50">
@@ -233,3 +240,5 @@ const UploadSection = () => {
 };
 
 export default UploadSection;
+
+    
