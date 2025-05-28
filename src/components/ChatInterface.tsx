@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -49,12 +50,22 @@ const ChatInterface = () => {
   }, [speechError, toast]);
 
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
-      if (scrollViewport) {
-        scrollViewport.scrollTop = scrollViewport.scrollHeight;
+    const attemptScroll = () => {
+      if (scrollAreaRef.current) {
+        const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
+        if (scrollViewport) {
+          scrollViewport.scrollTop = scrollViewport.scrollHeight;
+        }
       }
-    }
+    };
+
+    // Defer scroll to the next animation frame
+    // This allows the DOM to update and dimensions to be calculated before scrolling
+    const animationFrameId = requestAnimationFrame(attemptScroll);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
   }, [state.chatMessages]);
 
   const handleSendMessage = async () => {
@@ -159,3 +170,4 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
+
