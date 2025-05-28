@@ -17,6 +17,7 @@ const ChatInterface = () => {
   const { state, dispatch } = useAppContext();
   const [inputText, setInputText] = useState('');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [needsScroll, setNeedsScroll] = useState(false); // New state for controlling scroll
   const { toast } = useToast();
 
   const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
@@ -49,25 +50,36 @@ const ChatInterface = () => {
     }
   }, [speechError, toast]);
 
+  // Effect 1: Detect new messages and signal a scroll is needed
   useEffect(() => {
-    const attemptScroll = () => {
-      if (scrollAreaRef.current) {
-        // Query for the viewport element within the ScrollArea
-        const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
-        if (scrollViewport) {
-          scrollViewport.scrollTop = scrollViewport.scrollHeight;
-        }
-      }
-    };
-
-    // Defer scroll to the end of the event loop
-    // This allows the DOM to update and dimensions to be calculated before scrolling
-    const timeoutId = setTimeout(attemptScroll, 0);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
+    if (state.chatMessages.length > 0) {
+      setNeedsScroll(true);
+    }
   }, [state.chatMessages]);
+
+  // Effect 2: Perform scroll when needsScroll is true
+  useEffect(() => {
+    if (needsScroll) {
+      const attemptScroll = () => {
+        if (scrollAreaRef.current) {
+          const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
+          if (scrollViewport) {
+            scrollViewport.scrollTop = scrollViewport.scrollHeight;
+          }
+        }
+      };
+
+      // Defer scroll to allow DOM updates
+      const timeoutId = setTimeout(() => {
+        attemptScroll();
+        setNeedsScroll(false); // Reset the flag after attempting scroll
+      }, 0);
+
+      return () => {
+        clearTimeout(timeoutId);
+      };
+    }
+  }, [needsScroll]); // Removed scrollAreaRef from deps as it's stable
 
   const handleSendMessage = async () => {
     if (!inputText.trim() && !state.isChatLoading) return;
@@ -92,7 +104,6 @@ const ChatInterface = () => {
         });
         aiResponseText = result.story;
       } else {
-        // Fallback if no content selected or no summary
         aiResponseText = "I can help you best if you select some content. What would you like to talk about?";
         if (userMessage.text.toLowerCase().includes("story") || userMessage.text.toLowerCase().includes("tell me about")) {
           aiResponseText = "Please select an item from your content list first, then I can tell you a story or discuss it."
