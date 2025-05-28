@@ -1,12 +1,15 @@
+
 "use client";
 
 import React from 'react';
 import Image from 'next/image';
 import type { ContentItem } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ImageIcon, YoutubeIcon, FileAudioIcon, FileTextIcon, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ImageIcon, YoutubeIcon, FileAudioIcon, FileTextIcon, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppContext } from './AppProvider';
+import { useToast } from '@/hooks/use-toast';
 
 interface ContentListItemProps {
   item: ContentItem;
@@ -24,8 +27,19 @@ const ContentListItemIcon = ({ type }: { type: ContentItem['type'] }) => {
 
 const ContentListItem = ({ item }: ContentListItemProps) => {
   const { state, dispatch } = useAppContext();
+  const { toast } = useToast();
   const isSelected = state.selectedContentId === item.id;
   const isLoadingSummary = state.isSummaryLoading[item.id];
+
+  const handleDelete = (event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent Card onClick from firing
+    // Optional: Add confirmation dialog here in the future
+    dispatch({ type: 'DELETE_CONTENT', payload: item.id });
+    toast({
+      title: "Content Deleted",
+      description: `"${item.name}" has been removed.`,
+    });
+  };
 
   return (
     <Card
@@ -36,8 +50,8 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
       onClick={() => dispatch({ type: 'SELECT_CONTENT', payload: item.id })}
       aria-current={isSelected ? "page" : undefined}
     >
-      <CardHeader className="p-3">
-        <div className="flex items-start space-x-3">
+      <CardHeader className="p-3 flex justify-between items-start">
+        <div className="flex items-start space-x-3 flex-1 min-w-0">
           {item.thumbnail ? (
             <Image 
               src={item.thumbnail} 
@@ -61,6 +75,15 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
             </CardDescription>
           </div>
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0 ml-2"
+          onClick={handleDelete}
+          aria-label={`Delete ${item.name}`}
+        >
+          <Trash2 size={16} />
+        </Button>
       </CardHeader>
       {(item.summary || isLoadingSummary) && (
         <CardContent className="p-3 pt-0">
@@ -82,3 +105,4 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
 };
 
 export default ContentListItem;
+

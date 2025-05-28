@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { ContentItem, ChatMessage } from '@/lib/types';
@@ -17,7 +18,8 @@ type AppAction =
   | { type: 'ADD_CHAT_MESSAGE'; payload: ChatMessage }
   | { type: 'SET_CHAT_LOADING'; payload: boolean }
   | { type: 'SET_SUMMARY_LOADING'; payload: { id: string; isLoading: boolean } }
-  | { type: 'UPDATE_CONTENT_SUMMARY'; payload: { id: string; summary: string } };
+  | { type: 'UPDATE_CONTENT_SUMMARY'; payload: { id: string; summary: string } }
+  | { type: 'DELETE_CONTENT'; payload: string }; // Added DELETE_CONTENT action
 
 const initialState: AppState = {
   contentItems: [],
@@ -70,6 +72,12 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           [action.payload.id]: false,
         },
       };
+    case 'DELETE_CONTENT':
+      return {
+        ...state,
+        contentItems: state.contentItems.filter(item => item.id !== action.payload),
+        selectedContentId: state.selectedContentId === action.payload ? null : state.selectedContentId,
+      };
     default:
       return state;
   }
@@ -92,3 +100,4 @@ export const useAppContext = () => {
   }
   return context;
 };
+
