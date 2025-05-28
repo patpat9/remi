@@ -1,10 +1,10 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react'; // Removed useRef as scrollAreaRef will be removed
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+// ScrollArea import removed
 import { Mic, Send, Loader2, MessageSquareIcon } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import { useAppContext } from './AppProvider';
@@ -16,7 +16,6 @@ import useSpeechToText from '@/hooks/use-speech-to-text';
 const ChatInterface = () => {
   const { state, dispatch } = useAppContext();
   const [inputText, setInputText] = useState('');
-  // const scrollAreaRef = useRef<HTMLDivElement>(null); // Removed scrollAreaRef
   const { toast } = useToast();
 
   const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
@@ -49,28 +48,7 @@ const ChatInterface = () => {
     }
   }, [speechError, toast]);
 
-  // Explicitly ensuring custom scrolling logic (needsScroll state and useEffects) is removed/commented:
-  // const [needsScroll, setNeedsScroll] = useState(false);
-  // useEffect(() => {
-  //   if (state.chatMessages.length > 0) {
-  //     setNeedsScroll(true);
-  //   }
-  // }, [state.chatMessages]);
-  // useEffect(() => {
-  //   if (needsScroll) {
-  //     setNeedsScroll(false); 
-  //     const timeoutId = setTimeout(() => {
-  //       if (scrollAreaRef.current) { // This would cause an error now as scrollAreaRef is removed
-  //         const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
-  //         if (scrollViewport) {
-  //           scrollViewport.scrollTop = scrollViewport.scrollHeight;
-  //         }
-  //       }
-  //     }, 0);
-  //     return () => clearTimeout(timeoutId);
-  //   }
-  // }, [needsScroll]); // scrollAreaRef.current was removed from deps in a previous step
-
+  // Custom scrolling logic and related state/refs (needsScroll, scrollAreaRef) have been removed.
 
   const handleSendMessage = async () => {
     if (!inputText.trim() && !state.isChatLoading) return;
@@ -140,14 +118,15 @@ const ChatInterface = () => {
           Chat with Remi
         </h3>
       </div>
-      <ScrollArea className="flex-1 p-4"> {/* Removed ref={scrollAreaRef} */}
+      {/* Replaced ScrollArea with a simple div with overflow-y-auto */}
+      <div className="flex-1 p-4 overflow-y-auto">
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
             Ask about your selected content or tell Remi to create a story!
           </div>
         )}
         {state.chatMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)}
-      </ScrollArea>
+      </div>
       <div className="p-3 border-t border-border bg-muted/30">
         <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center space-x-2">
           {hasRecognitionSupport && (
