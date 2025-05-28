@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'; // Removed useRef as scrollAreaRef will be removed
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -16,7 +16,7 @@ import useSpeechToText from '@/hooks/use-speech-to-text';
 const ChatInterface = () => {
   const { state, dispatch } = useAppContext();
   const [inputText, setInputText] = useState('');
-  const scrollAreaRef = useRef<HTMLDivElement>(null); // Keep ref for potential future use
+  // const scrollAreaRef = useRef<HTMLDivElement>(null); // Removed scrollAreaRef
   const { toast } = useToast();
 
   const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
@@ -49,34 +49,28 @@ const ChatInterface = () => {
     }
   }, [speechError, toast]);
 
-  // Temporarily removed scrolling logic to diagnose Max Update Depth error
+  // Explicitly ensuring custom scrolling logic (needsScroll state and useEffects) is removed/commented:
   // const [needsScroll, setNeedsScroll] = useState(false);
-  // // Effect 1: Detect new messages and signal a scroll is needed
   // useEffect(() => {
   //   if (state.chatMessages.length > 0) {
   //     setNeedsScroll(true);
   //   }
   // }, [state.chatMessages]);
-
-  // // Effect 2: Perform scroll when needsScroll is true
   // useEffect(() => {
   //   if (needsScroll) {
-  //     setNeedsScroll(false); // Reset the flag synchronously
-
+  //     setNeedsScroll(false); 
   //     const timeoutId = setTimeout(() => {
-  //       if (scrollAreaRef.current) {
+  //       if (scrollAreaRef.current) { // This would cause an error now as scrollAreaRef is removed
   //         const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
   //         if (scrollViewport) {
   //           scrollViewport.scrollTop = scrollViewport.scrollHeight;
   //         }
   //       }
   //     }, 0);
-      
-  //     return () => {
-  //       clearTimeout(timeoutId);
-  //     };
+  //     return () => clearTimeout(timeoutId);
   //   }
-  // }, [needsScroll]);
+  // }, [needsScroll]); // scrollAreaRef.current was removed from deps in a previous step
+
 
   const handleSendMessage = async () => {
     if (!inputText.trim() && !state.isChatLoading) return;
@@ -146,7 +140,7 @@ const ChatInterface = () => {
           Chat with Remi
         </h3>
       </div>
-      <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+      <ScrollArea className="flex-1 p-4"> {/* Removed ref={scrollAreaRef} */}
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
             Ask about your selected content or tell Remi to create a story!
