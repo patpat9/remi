@@ -19,3 +19,10 @@ export interface ChatMessage {
   timestamp: Date;
   relatedContentId?: string; // Optionally link message to a piece of content
 }
+
+// Add type definition for SpeechRecognitionError event if not already globally available or imported
+// This is a standard DOM type but might need explicit definition in some TypeScript setups.
+export interface SpeechRecognitionError extends Event {
+  error: string; // Or a more specific type like SpeechRecognitionErrorCode
+  message: string;
+}

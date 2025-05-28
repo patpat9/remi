@@ -1,14 +1,13 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react'; // Keep useRef
+import React, { useState, useEffect, useRef, useCallback } from 'react'; // Added useCallback
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// ScrollArea import should be removed
 import { Mic, Send, Loader2, MessageSquareIcon } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import { useAppContext } from './AppProvider';
-import type { ChatMessage as ChatMessageType } from '@/lib/types';
+import type { ChatMessage as ChatMessageType, SpeechRecognitionError } from '@/lib/types';
 import { generateStoriesFromContent } from '@/ai/flows/generate-stories-from-content';
 import { useToast } from '@/hooks/use-toast';
 import useSpeechToText from '@/hooks/use-speech-to-text';
@@ -17,9 +16,17 @@ const ChatInterface = () => {
   const { state, dispatch } = useAppContext();
   const [inputText, setInputText] = useState('');
   const { toast } = useToast();
-  const chatContainerRef = useRef<HTMLDivElement>(null); // Renamed for clarity, or use existing scrollAreaRef if it points to the div
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
+
+  const handleSpeechResult = useCallback((finalTranscript: string) => {
+    setInputText(finalTranscript);
+  }, []); // setInputText is stable
+
+  const handleSpeechError = useCallback((event: SpeechRecognitionError) => { // Added SpeechRecognitionError type
+    toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
+  }, [toast]); // toast is stable
 
   const {
     isListening,
@@ -29,12 +36,8 @@ const ChatInterface = () => {
     stopListening,
     hasRecognitionSupport,
   } = useSpeechToText({
-    onResult: (finalTranscript) => {
-      setInputText(finalTranscript);
-    },
-    onError: (event) => {
-      toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
-    },
+    onResult: handleSpeechResult,
+    onError: handleSpeechError,
   });
   
   useEffect(() => {
@@ -49,16 +52,14 @@ const ChatInterface = () => {
     }
   }, [speechError, toast]);
 
-  // Simplified useEffect for auto-scrolling the div
   useEffect(() => {
     if (chatContainerRef.current) {
       const element = chatContainerRef.current;
-      // Using setTimeout to ensure DOM has updated scrollHeight
       setTimeout(() => {
         element.scrollTop = element.scrollHeight;
       }, 0);
     }
-  }, [state.chatMessages]); // Scroll when messages change
+  }, [state.chatMessages]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim() && !state.isChatLoading) return;
@@ -128,7 +129,6 @@ const ChatInterface = () => {
           Chat with Remi
         </h3>
       </div>
-      {/* This is the div for messages, ensure ref is applied */}
       <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto">
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
