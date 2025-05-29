@@ -1,46 +1,51 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
 
 interface SpeechToTextOptions {
-  onResult?: (transcript: string) => void;
+  onResult?: (event: SpeechRecognitionEvent) => void; // Changed to pass the full event
   onError?: (error: SpeechRecognitionError) => void;
   onEnd?: () => void;
 }
 
 const useSpeechToText = (options?: SpeechToTextOptions) => {
   const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
+  const [transcript, setTranscript] = useState(''); // Internal transcript state
   const [error, setError] = useState<string | null>(null);
   const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
       setError('Speech recognition not supported in this browser.');
       return;
     }
 
-    const recogInstance = new SpeechRecognition();
-    recogInstance.continuous = false;
+    const recogInstance = new SpeechRecognitionAPI();
+    recogInstance.continuous = false; // Important for push-to-talk: get result on pause/stop
     recogInstance.interimResults = true;
     recogInstance.lang = 'en-US';
 
     recogInstance.onresult = (event: SpeechRecognitionEvent) => {
-      let finalTranscript = '';
-      let interimTranscript = '';
+      let currentInterimTranscript = '';
+      let currentFinalTranscript = '';
+
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
+          currentFinalTranscript += event.results[i][0].transcript;
         } else {
-          interimTranscript += event.results[i][0].transcript;
+          currentInterimTranscript += event.results[i][0].transcript;
         }
       }
-      setTranscript(finalTranscript || interimTranscript);
-      if (options?.onResult && finalTranscript) {
-        options.onResult(finalTranscript);
+      // Update internal transcript state for consumers that just want the latest string
+      setTranscript(currentFinalTranscript || currentInterimTranscript);
+
+      // Pass the raw event to the callback
+      if (options?.onResult) {
+        options.onResult(event);
       }
     };
 
@@ -64,12 +69,12 @@ const useSpeechToText = (options?: SpeechToTextOptions) => {
     return () => {
       recogInstance.stop();
     };
-  }, [options]);
+  }, [options]); // options is the dependency
 
   const startListening = useCallback(() => {
     if (recognition && !isListening) {
       try {
-        setTranscript('');
+        setTranscript(''); // Clear internal transcript
         setError(null);
         recognition.start();
         setIsListening(true);
@@ -83,13 +88,13 @@ const useSpeechToText = (options?: SpeechToTextOptions) => {
   const stopListening = useCallback(() => {
     if (recognition && isListening) {
       recognition.stop();
-      setIsListening(false);
+      // isListening will be set to false by the onend handler
     }
   }, [recognition, isListening]);
 
   return {
     isListening,
-    transcript,
+    transcript, // Consumers can still use this for live updates if needed
     error,
     startListening,
     stopListening,

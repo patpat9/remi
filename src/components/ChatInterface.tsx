@@ -17,63 +17,25 @@ const ChatInterface = () => {
   const [inputText, setInputText] = useState('');
   const { toast } = useToast();
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const finalTranscriptRef = useRef<string>('');
 
-  const handleSpeechResult = useCallback((finalTranscript: string) => {
-    setInputText(finalTranscript);
-  }, []); 
-
-  const handleSpeechError = useCallback((event: SpeechRecognitionError) => {
-    toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
-  }, [toast]);
-
-  const speechToTextOptions = useMemo(() => ({
-    onResult: handleSpeechResult,
-    onError: handleSpeechError,
-  }), [handleSpeechResult, handleSpeechError]);
-
-  const {
-    isListening,
-    transcript, 
-    error: speechError,
-    startListening,
-    stopListening,
-    hasRecognitionSupport,
-  } = useSpeechToText(speechToTextOptions);
-
-  useEffect(() => {
-    if (transcript && !isListening) { 
-      setInputText(transcript);
-    }
-  }, [transcript, isListening]);
-
-
-  useEffect(() => {
-    if (speechError) {
-      toast({ title: "Voice Recognition Error", description: speechError, variant: "destructive" });
-    }
-  }, [speechError, toast]);
-
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      const element = chatContainerRef.current;
-      setTimeout(() => { // Defer scroll to allow DOM to update
-        element.scrollTop = element.scrollHeight;
-      }, 0);
-    }
-  }, [state.chatMessages]);
-
-  const handleSendMessage = async () => {
-    if (!inputText.trim() && !state.isChatLoading) return;
+  const handleSendMessage = useCallback(async (textOverride?: string) => {
+    const messageText = (textOverride || inputText).trim();
+    if (!messageText && !state.isChatLoading) return;
 
     const userMessage: ChatMessageType = {
       id: crypto.randomUUID(),
       sender: 'user',
-      text: inputText.trim(),
+      text: messageText,
       timestamp: new Date(),
     };
     dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMessage });
-    const currentInputText = inputText.trim();
-    setInputText('');
+    
+    if (!textOverride) { // Clear input text only if it was a typed message
+        setInputText('');
+    }
+    // For speech, inputText will be cleared by onSpeechEnd or onMicMouseDown
+
     dispatch({ type: 'SET_CHAT_LOADING', payload: true });
 
     try {
@@ -102,7 +64,7 @@ const ChatInterface = () => {
       }
 
       const aiInput: RemiChatInput = {
-        userMessage: currentInputText,
+        userMessage: messageText,
         availableContent: availableContentForAI,
         currentSelectedItemInfo: currentSelectedItemInfoForAI,
       };
@@ -123,12 +85,7 @@ const ChatInterface = () => {
       }
 
       if (result.mediaCommandToExecute) {
-        // Ensure the content to be controlled is selected, even if AI didn't explicitly select it with this command
-        // This handles cases where AI implies control over the *already* selected item
         if (result.mediaCommandToExecute.contentId && result.mediaCommandToExecute.contentId !== state.selectedContentId) {
-            // Only dispatch SELECT_CONTENT if the AI is trying to control a *different* item than currently selected,
-            // AND it didn't *also* provide selectedContentIdByAi (which would have already selected it).
-            // If selectedContentIdByAi *was* provided, it matches mediaCommandToExecute.contentId, so this is fine.
             if(!result.selectedContentIdByAi || result.selectedContentIdByAi !== result.mediaCommandToExecute.contentId) {
                  dispatch({ type: 'SELECT_CONTENT', payload: result.mediaCommandToExecute.contentId });
             }
@@ -149,15 +106,80 @@ const ChatInterface = () => {
     } finally {
       dispatch({ type: 'SET_CHAT_LOADING', payload: false });
     }
+  }, [dispatch, state.contentItems, state.selectedContentId, state.isChatLoading, toast, inputText]);
+
+
+  const onSpeechResultCallback = useCallback((event: SpeechRecognitionEvent) => {
+    let accumulatedFinalTranscript = '';
+    let currentInterimTranscript = '';
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      const transcriptSegment = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        accumulatedFinalTranscript += transcriptSegment;
+      } else {
+        currentInterimTranscript += transcriptSegment;
+      }
+    }
+    setInputText(accumulatedFinalTranscript + currentInterimTranscript); // Show live updates
+    if (accumulatedFinalTranscript) {
+      finalTranscriptRef.current = accumulatedFinalTranscript;
+    }
+  }, []);
+
+  const handleSpeechError = useCallback((event: SpeechRecognitionError) => {
+    toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
+    finalTranscriptRef.current = ''; // Clear any partial transcript on error
+    setInputText('');
+  }, [toast]);
+
+  const onSpeechEndCallback = useCallback(() => {
+    if (finalTranscriptRef.current && finalTranscriptRef.current.trim() !== '') {
+      handleSendMessage(finalTranscriptRef.current.trim());
+    }
+    finalTranscriptRef.current = '';
+    // setInputText(''); // Cleared by handleSendMessage or onMicMouseDown
+  }, [handleSendMessage]);
+  
+  const speechToTextOptions = useMemo(() => ({
+    onResult: onSpeechResultCallback,
+    onError: handleSpeechError,
+    onEnd: onSpeechEndCallback,
+  }), [onSpeechResultCallback, handleSpeechError, onSpeechEndCallback]);
+
+  const {
+    isListening,
+    // transcript, // We are using inputText for visual and finalTranscriptRef for sending
+    error: speechError,
+    startListening,
+    stopListening,
+    hasRecognitionSupport,
+  } = useSpeechToText(speechToTextOptions);
+
+  useEffect(() => {
+    if (speechError) {
+      toast({ title: "Voice Recognition Error", description: speechError, variant: "destructive" });
+    }
+  }, [speechError, toast]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      const element = chatContainerRef.current;
+      setTimeout(() => {
+        element.scrollTop = element.scrollHeight;
+      }, 0);
+    }
+  }, [state.chatMessages]);
+
+  const handleMicMouseDown = () => {
+    if (state.isChatLoading || !hasRecognitionSupport) return;
+    finalTranscriptRef.current = '';
+    setInputText('');
+    startListening();
   };
 
-  const toggleListening = () => {
-    if (isListening) {
-      stopListening();
-    } else {
-      setInputText(''); 
-      startListening();
-    }
+  const handleMicMouseUp = () => {
+    if (!hasRecognitionSupport) return;
+    stopListening();
   };
 
   return (
@@ -179,7 +201,17 @@ const ChatInterface = () => {
       <div className="p-3 border-t border-border bg-muted/30">
         <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center space-x-2">
           {hasRecognitionSupport && (
-          <Button type="button" variant="outline" size="icon" onClick={toggleListening} disabled={state.isChatLoading}>
+          <Button 
+            type="button" 
+            variant="outline" 
+            size="icon" 
+            onMouseDown={handleMicMouseDown}
+            onMouseUp={handleMicMouseUp}
+            onTouchStart={handleMicMouseDown} // Basic touch support
+            onTouchEnd={handleMicMouseUp}     // Basic touch support
+            disabled={state.isChatLoading}
+            className={isListening ? "bg-accent text-accent-foreground" : ""}
+          >
             <Mic className={isListening ? "text-destructive animate-pulse" : ""} />
           </Button>
           )}
@@ -188,10 +220,10 @@ const ChatInterface = () => {
             placeholder={isListening ? "Listening..." : "Type your message..."}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            disabled={state.isChatLoading || isListening}
+            disabled={state.isChatLoading || isListening} // Disable typing while listening
             className="flex-1"
           />
-          <Button type="submit" size="icon" disabled={state.isChatLoading || !inputText.trim()}>
+          <Button type="submit" size="icon" disabled={state.isChatLoading || (!inputText.trim() && !isListening)}>
             {state.isChatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send />}
           </Button>
         </form>
