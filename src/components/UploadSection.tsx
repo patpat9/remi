@@ -86,13 +86,13 @@ const UploadSection = () => {
         itemName = file.name;
         const dataUrl = await readFileAsDataURL(file);
         newItemDataPartial = { id, type, name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
-        aiInput = { contentType: 'photo', contentData: dataUrl };
+        aiInput = { contentType: 'photo', contentData: dataUrl, contentName: itemName };
         thumbnail = dataUrl;
       } else if (type === 'youtube' && youtubeUrl) {
         let videoId: string | null = null;
         let playlistId: string | null = null;
         let actualVideoUrlForProcessing: string | null = null;
-        itemName = 'YouTube Video'; // Default name
+        itemName = 'YouTube Video'; 
         let processingShouldStop = false;
 
         try {
@@ -101,7 +101,6 @@ const UploadSection = () => {
             const listParam = urlObj.searchParams.get('list');
 
             if (listParam && !vParam) {
-                // Pure playlist URL (e.g., youtube.com/playlist?list=...)
                 toast({
                     title: "Playlist URL Detected",
                     description: "Please add individual videos from the playlist. Full playlist import is not currently supported.",
@@ -110,7 +109,7 @@ const UploadSection = () => {
                 processingShouldStop = true;
             } else if (vParam) {
                 videoId = vParam;
-                playlistId = listParam; // Can be null if not a playlist context
+                playlistId = listParam; 
                 actualVideoUrlForProcessing = `https://www.youtube.com/watch?v=${videoId}`;
                 itemName = `YouTube Video: ${videoId}`;
                 if (playlistId) {
@@ -124,22 +123,20 @@ const UploadSection = () => {
                 thumbnail = `https://img.youtube.com/vi/${videoId}/0.jpg`;
             }
         } catch (e) {
-            // URL parsing failed, might be a youtu.be link or invalid. Let next block handle.
+            // URL parsing failed
         }
 
-        // Handle youtu.be URLs if not parsed by new URL() or if actualVideoUrlForProcessing is still null
         if (!actualVideoUrlForProcessing && youtubeUrl.includes('youtu.be/')) {
             const shortVideoIdMatch = youtubeUrl.match(/youtu\.be\/([\w-]+)/);
             const shortVideoId = shortVideoIdMatch ? shortVideoIdMatch[1] : null;
             if (shortVideoId) {
-                videoId = shortVideoId; // Ensure videoId is set for thumbnail
+                videoId = shortVideoId; 
                 actualVideoUrlForProcessing = `https://www.youtube.com/watch?v=${shortVideoId}`;
                 itemName = `YouTube Video: ${shortVideoId}`;
                 thumbnail = `https://img.youtube.com/vi/${shortVideoId}/0.jpg`;
             }
         }
         
-        // Centralized dialog closing and input clearing
         const closeDialogAndClearInput = () => {
             handleOpenChange('youtube', false);
             setYoutubeUrl('');
@@ -153,10 +150,8 @@ const UploadSection = () => {
 
         if (actualVideoUrlForProcessing && videoId) {
             newItemDataPartial = { id, type, name: itemName, data: actualVideoUrlForProcessing, originalData: actualVideoUrlForProcessing, createdAt: currentTimeISO };
-            aiInput = { contentType: 'youtube', contentData: actualVideoUrlForProcessing };
-            // Dialog closing and input clearing will happen after successful processing or if no item is to be added.
+            aiInput = { contentType: 'youtube', contentData: actualVideoUrlForProcessing, contentName: itemName };
         } else {
-            // If no valid video URL could be extracted and it wasn't a pure playlist URL already handled
              if (!(playlistId && !videoId)) { 
                 toast({ title: "Invalid YouTube URL", description: "Please provide a valid YouTube video URL (e.g., watch?v=... or youtu.be/...)", variant: "destructive", duration: 7000 });
             }
@@ -164,24 +159,22 @@ const UploadSection = () => {
             closeDialogAndClearInput();
             return; 
         }
-        // If we reach here with newItemDataPartial, it means we proceed to add. Dialog will be closed after main processing logic.
-        // This ensures dialog only closes ONCE per interaction.
       } else if (type === 'audio' && file) {
         itemName = file.name;
         const dataUrl = await readFileAsDataURL(file);
         newItemDataPartial = { id, type, name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
-        aiInput = { contentType: 'audio', contentData: dataUrl };
+        aiInput = { contentType: 'audio', contentData: dataUrl, contentName: itemName };
       } else if (type === 'text' && file) {
         itemName = file.name;
         if (file.type === 'application/pdf') {
           const pdfDataUri = await readFileAsDataURL(file); 
           const extractedText = await parsePdfToText(file);
           newItemDataPartial = { id, type: 'text', name: file.name, data: extractedText, originalData: pdfDataUri, createdAt: currentTimeISO };
-          aiInput = { contentType: 'text', contentData: extractedText };
+          aiInput = { contentType: 'text', contentData: extractedText, contentName: itemName };
         } else { 
           const rawText = await readFileAsText(file);
           newItemDataPartial = { id, type: 'text', name: file.name, data: rawText, originalData: rawText, createdAt: currentTimeISO };
-          aiInput = { contentType: 'text', contentData: rawText };
+          aiInput = { contentType: 'text', contentData: rawText, contentName: itemName };
         }
       }
 
@@ -198,25 +191,23 @@ const UploadSection = () => {
           dispatch({ type: 'UPDATE_CONTENT_SUMMARY', payload: { id, summary: summaryResult.summary } });
           toast({ title: "Content Added", description: `${itemName} added and summary generated.` });
         } else {
-          // This case should ideally not be hit if aiInput is always prepared when newItemDataPartial is.
           dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
           toast({ title: "Content Added", description: `${itemName} added.` });
         }
-        if (type === 'youtube') { // Close dialog and clear input after successful YouTube processing
+        if (type === 'youtube') { 
             handleOpenChange('youtube', false);
             setYoutubeUrl('');
         }
       } else {
-         if (!file && type !== 'youtube') { // For types other than youtube if no file
+         if (!file && type !== 'youtube') { 
             dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
          }
-         // For YouTube, loading is handled and dialog closed within its specific block if no itemDataPartial
       }
     } catch (error: any) {
-      console.error(`Error processing ${itemName}:`, error);
+      console.error(`Error processing ${itemName} (ID: ${id}):`, error);
       toast({ title: "Upload Error", description: error.message || `Could not process ${itemName || 'content'} or generate summary.`, variant: "destructive" });
       dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
-      if (type === 'youtube') { // Ensure dialog closes and input clears on generic error for YouTube
+      if (type === 'youtube') { 
         handleOpenChange('youtube', false);
         setYoutubeUrl('');
       }
@@ -232,7 +223,10 @@ const UploadSection = () => {
       try {
         await Promise.all(uploadPromises);
       } catch (error) {
-        console.error("Error during parallel uploads:", error);
+        // Individual errors are caught inside performUploadProcessing and shown as toasts.
+        // This catch is for any unexpected errors from Promise.all itself.
+        console.error("Error during parallel file processing setup:", error);
+        toast({ title: "Processing Error", description: "An unexpected error occurred while processing multiple files.", variant: "destructive"});
       }
 
       if (event.target) {
@@ -344,7 +338,7 @@ const UploadSection = () => {
                     <Button variant="outline">Cancel</Button>
                   </DialogClose>
                   <Button 
-                    onClick={() => performUploadProcessing(opt.type)} 
+                    onClick={() => performUploadProcessing(opt.type as ContentType)} 
                     disabled={opt.getIsDialogDisabled ? opt.getIsDialogDisabled() : false}
                   >
                     Add Content
@@ -361,3 +355,4 @@ const UploadSection = () => {
 
 export default UploadSection;
     
+

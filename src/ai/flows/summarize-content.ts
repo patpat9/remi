@@ -13,6 +13,7 @@ import {ai, contentToTextAi} from '@/ai/genkit'; // Ensure ai is imported if you
 import {z} from 'genkit';
 
 const SummarizeContentInputSchema = z.object({
+  contentName: z.string().optional().describe('The name of the content item, for logging purposes.'),
   contentType: z.enum(['photo', 'youtube', 'audio', 'text']).describe('The type of the content being summarized.'),
   contentData: z.string().describe('The content data. For photos/audio: data URI. For YouTube: URL. For text: raw text content (extracted from PDF or read from file).'),
 });
@@ -26,10 +27,10 @@ export type SummarizeContentOutput = z.infer<typeof SummarizeContentOutputSchema
 // This function is directly used by UploadSection.tsx
 export async function contentToText(input: SummarizeContentInput): Promise<SummarizeContentOutput> {
   let promptParts: Array<{ text: string } | { media: { url: string, contentType?: string } }> = [];
-  let summarizationInstruction: string;
+  // Initialize summarizationInstruction to prevent undefined if no branches match
+  let summarizationInstruction: string = `Summarize the provided content.`; 
 
   if (input.contentType === 'youtube') {
-    // Pass the YouTube URL as a media part for the model to process the video content
     promptParts.push({ media: { url: input.contentData } });
     summarizationInstruction = `You are an AI assistant. For the provided YouTube video, describe its content in detail. What are the main topics, key takeaways, and overall narrative or purpose of the video? This detailed description will be used by another AI to discuss the video with a user. Focus on extracting factual information and key points.`;
   } else if (input.contentType === 'text') {
@@ -37,28 +38,33 @@ export async function contentToText(input: SummarizeContentInput): Promise<Summa
     summarizationInstruction = `You are an AI assistant that specializes in summarizing content. You will be provided with text content. Your task is to generate a concise summary of this text. Content Type: ${input.contentType}`;
   } else if (input.contentType === 'photo' || input.contentType === 'audio') {
     const dataUri = input.contentData;
-    // Extract MIME type from data URI, e.g., "data:image/jpeg;base64,..." -> "image/jpeg"
-    const mimeTypeMatch = dataUri.match(/^data:([A-Za-z-+\/]+);/);
-    if (!mimeTypeMatch || !mimeTypeMatch[1]) {
-      console.error("Invalid data URI or missing MIME type for photo/audio content:", dataUri.substring(0, 100));
-      return { summary: "Error: Could not process media content due to invalid data format. MIME type missing." };
+
+    if (typeof dataUri !== 'string' || !dataUri.startsWith('data:')) {
+      console.error(`Invalid data URI format for ${input.contentType} content (Name: ${input.contentName || 'N/A'}):`, dataUri ? String(dataUri).substring(0,100) : "undefined/null dataUri");
+      return { summary: "Error: Media data provided for photo/audio is not a valid data URI." };
     }
-    const mimeType = mimeTypeMatch[1];
+
+    const mimeTypeMatch = dataUri.match(/^data:([A-Za-z-+\/]+);/);
+    if (!mimeTypeMatch || !mimeTypeMatch[1] || mimeTypeMatch[1].trim() === '') {
+      console.error(`Invalid data URI or missing/empty MIME type for ${input.contentType} content (Name: ${input.contentName || 'N/A'}). URI starts with:`, dataUri.substring(0, 100));
+      return { summary: "Error: Could not process media content due to invalid data format. MIME type missing or empty." };
+    }
+    const mimeType = mimeTypeMatch[1].trim();
+
     promptParts.push({ media: { url: dataUri, contentType: mimeType } });
     summarizationInstruction = `You are an AI assistant that specializes in summarizing content. You will be provided with ${input.contentType} content (MIME type: ${mimeType}). Your task is to generate a concise summary of the content.`;
   } else {
-    // Should not happen with current enum, but good for safety
-    console.error("Unsupported content type for summarization:", input.contentType);
-    return { summary: "Unsupported content type." };
+    console.error(`Unsupported content type for summarization (Name: ${input.contentName || 'N/A'}):`, input.contentType);
+    return { summary: `Unsupported content type: ${input.contentType}. Cannot generate summary.` };
   }
   
   promptParts.push({ text: summarizationInstruction });
 
   try {
     const response = await contentToTextAi.generate({ prompt: promptParts });
-    return { summary: response.text };
+    return { summary: response.text || "Summary could not be generated (empty response)." };
   } catch (error) {
-    console.error(`Error generating summary for ${input.contentType}:`, error);
+    console.error(`Error generating summary for ${input.contentType} (Name: ${input.contentName || 'N/A'}):`, error);
     return { summary: `Error generating summary. Details: ${error instanceof Error ? error.message : String(error)}`};
   }
 }
@@ -72,7 +78,7 @@ const summarizeContentFlowInternal = ai.defineFlow(
   },
   async (input) => {
     let promptParts: Array<{ text: string } | { media: { url: string, contentType?: string } }> = [];
-    let summarizationInstruction: string;
+    let summarizationInstruction: string = `Summarize the provided content.`;
 
     if (input.contentType === 'youtube') {
       promptParts.push({ media: { url:input.contentData } });
@@ -82,26 +88,30 @@ const summarizeContentFlowInternal = ai.defineFlow(
       summarizationInstruction = `You are an AI assistant that specializes in summarizing content. You will be provided with text content. Your task is to generate a concise summary of this text. Content Type: ${input.contentType}`;
     } else if (input.contentType === 'photo' || input.contentType === 'audio') {
       const dataUri = input.contentData;
-      const mimeTypeMatch = dataUri.match(/^data:([A-Za-z-+\/]+);/);
-      if (!mimeTypeMatch || !mimeTypeMatch[1]) {
-        console.error("Invalid data URI or missing MIME type for photo/audio content in flow:", dataUri.substring(0, 100));
-        return { summary: "Error: Could not process media content due to invalid data format in flow. MIME type missing." };
+      if (typeof dataUri !== 'string' || !dataUri.startsWith('data:')) {
+        console.error(`Flow: Invalid data URI format for ${input.contentType} (Name: ${input.contentName || 'N/A'}):`, dataUri ? String(dataUri).substring(0,100) : "undefined/null dataUri");
+        return { summary: "Error in flow: Media data is not a valid data URI." };
       }
-      const mimeType = mimeTypeMatch[1];
+      const mimeTypeMatch = dataUri.match(/^data:([A-Za-z-+\/]+);/);
+      if (!mimeTypeMatch || !mimeTypeMatch[1] || mimeTypeMatch[1].trim() === '') {
+        console.error(`Flow: Invalid data URI or missing/empty MIME type for ${input.contentType} (Name: ${input.contentName || 'N/A'}). URI starts with:`, dataUri.substring(0, 100));
+        return { summary: "Error in flow: Could not process media content due to invalid data format. MIME type missing or empty." };
+      }
+      const mimeType = mimeTypeMatch[1].trim();
       promptParts.push({ media: { url: dataUri, contentType: mimeType } });
       summarizationInstruction = `You are an AI assistant that specializes in summarizing content. You will be provided with ${input.contentType} content (MIME type: ${mimeType}). Your task is to generate a concise summary of the content.`;
     } else {
-      return { summary: "Unsupported content type for summarization flow." };
+      console.error(`Flow: Unsupported content type for summarization (Name: ${input.contentName || 'N/A'}):`, input.contentType);
+      return { summary: `Unsupported content type in flow: ${input.contentType}.` };
     }
     
     promptParts.push({ text: summarizationInstruction });
     
     try {
-        // Using ai.generate within a flow context, assuming 'ai' is configured with a suitable model.
         const response = await ai.generate({ prompt: promptParts }); 
-        return { summary: response.text };
+        return { summary: response.text || "Summary could not be generated in flow (empty response)." };
     } catch (error) {
-        console.error(`Error generating summary in flow for ${input.contentType}:`, error);
+        console.error(`Error generating summary in flow for ${input.contentType} (Name: ${input.contentName || 'N/A'}):`, error);
         return { summary: `Error generating summary in flow. Details: ${error instanceof Error ? error.message : String(error)}`};
     }
   }
