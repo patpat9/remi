@@ -23,23 +23,22 @@ if (typeof window !== 'undefined') {
 
 const UploadSection = () => {
   const { dispatch } = useAppContext();
-  const [dialogOpen, setDialogOpen] = useState<Record<Extract<ContentType, 'youtube' | 'audio'>, boolean>>({
+  const [dialogOpen, setDialogOpen] = useState<Record<Extract<ContentType, 'youtube'>, boolean>>({
     youtube: false,
-    audio: false,
   });
   
   const photoInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null); // Added ref for audio input
   const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [audioFile, setAudioFile] = useState<File | null>(null);
+  // const [audioFile, setAudioFile] = useState<File | null>(null); // No longer needed
   const { toast } = useToast();
 
-  const handleOpenChange = (type: Extract<ContentType, 'youtube' | 'audio'>, open: boolean) => {
+  const handleOpenChange = (type: Extract<ContentType, 'youtube'>, open: boolean) => {
     setDialogOpen(prev => ({ ...prev, [type]: open }));
     if (!open) {
       // Reset specific states when dialog closes
       if (type === 'youtube') setYoutubeUrl('');
-      if (type === 'audio') setAudioFile(null);
     }
   };
 
@@ -71,9 +70,7 @@ const UploadSection = () => {
       fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n';
     }
     // Clean up the extracted text
-    let cleanedText = fullText.replace(/\s+/g, ' ').trim(); // Replace multiple spaces with single, trim ends
-    // Optionally, handle multiple newlines if needed, but for now this is a good start
-    // cleanedText = cleanedText.replace(/\n\s*\n/g, '\n'); // Replace multiple newlines with single
+    let cleanedText = fullText.replace(/\s+/g, ' ').trim(); 
     return cleanedText;
   };
 
@@ -101,25 +98,26 @@ const UploadSection = () => {
           dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
           return;
         }
-        itemName = 'YouTube Video'; // Or attempt to fetch title
+        itemName = 'YouTube Video'; 
         const videoIdMatch = youtubeUrl.match(/(?:youtu\.be\/|watch\?v=)([\w-]+)/);
         const videoId = videoIdMatch ? videoIdMatch[1] : null;
         thumbnail = videoId ? `https://img.youtube.com/vi/${videoId}/0.jpg` : undefined;
         newItemDataPartial = { id, type, name: itemName, data: youtubeUrl, originalData: youtubeUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'youtube', contentData: youtubeUrl };
-      } else if (type === 'audio' && audioFile) {
-        itemName = audioFile.name;
-        const dataUrl = await readFileAsDataURL(audioFile);
-        newItemDataPartial = { id, type, name: audioFile.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
+         handleOpenChange('youtube', false); // Close dialog on successful processing
+      } else if (type === 'audio' && file) { // Changed from audioFile to file
+        itemName = file.name;
+        const dataUrl = await readFileAsDataURL(file);
+        newItemDataPartial = { id, type, name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'audio', contentData: dataUrl };
       } else if (type === 'text' && file) {
         itemName = file.name;
         if (file.type === 'application/pdf') {
-          const pdfDataUri = await readFileAsDataURL(file); // For potential originalData use
+          const pdfDataUri = await readFileAsDataURL(file); 
           const extractedText = await parsePdfToText(file);
           newItemDataPartial = { id, type: 'text', name: file.name, data: extractedText, originalData: pdfDataUri, createdAt: currentTimeISO };
           aiInput = { contentType: 'text', contentData: extractedText };
-        } else { // Other text types like .txt, .md
+        } else { 
           const rawText = await readFileAsText(file);
           newItemDataPartial = { id, type: 'text', name: file.name, data: rawText, originalData: rawText, createdAt: currentTimeISO };
           aiInput = { contentType: 'text', contentData: rawText };
@@ -134,16 +132,11 @@ const UploadSection = () => {
         dispatch({ type: 'ADD_CONTENT', payload: contentItem });
         dispatch({ type: 'SELECT_CONTENT', payload: id }); 
 
-        if (type === 'youtube' || type === 'audio') {
-           handleOpenChange(type as Extract<ContentType, 'youtube' | 'audio'>, false);
-        }
-
         if (aiInput) {
           const summaryResult = await contentToText(aiInput);
           dispatch({ type: 'UPDATE_CONTENT_SUMMARY', payload: { id, summary: summaryResult.summary } });
           toast({ title: "Content Added", description: `${itemName} added and summary generated.` });
         } else {
-          // This case should ideally not happen if processing always yields AI input
           dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
           toast({ title: "Content Added", description: `${itemName} added.` });
         }
@@ -157,7 +150,7 @@ const UploadSection = () => {
     }
   };
 
-  const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>, type: 'photo' | 'text') => {
+  const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>, type: 'photo' | 'text' | 'audio') => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
       await performUploadProcessing(type, file);
@@ -198,10 +191,9 @@ const UploadSection = () => {
       type: 'audio', 
       icon: <FileAudioIcon className="mr-2 h-5 w-5" />, 
       label: 'Audio', 
-      dialogContent: (
-        <Input type="file" accept="audio/*" onChange={(e: ChangeEvent<HTMLInputElement>) => e.target.files && setAudioFile(e.target.files[0])} />
-      ),
-      getIsDialogDisabled: () => !audioFile,
+      onClick: () => audioInputRef.current?.click(), // Direct click
+      fileInputRef: audioInputRef,                 // Ref to hidden input
+      fileAccept: "audio/*",                        // File accept types
     },
     { 
       type: 'text', 
@@ -218,6 +210,7 @@ const UploadSection = () => {
       <AppLogo />
       <div className="grid grid-cols-2 gap-3">
         {uploadOptions.map(opt => {
+          // Direct file picker uploads (Photo, Document, Audio)
           if (opt.onClick && opt.fileInputRef) { 
             return (
               <React.Fragment key={opt.type}>
@@ -234,18 +227,18 @@ const UploadSection = () => {
                   ref={opt.fileInputRef}
                   accept={opt.fileAccept}
                   style={{ display: 'none' }}
-                  onChange={(e) => handleFileSelected(e, opt.type as 'photo' | 'text')}
+                  onChange={(e) => handleFileSelected(e, opt.type as 'photo' | 'text' | 'audio')}
                 />
               </React.Fragment>
             );
           }
           
-          // Dialog-based uploads (YouTube, Audio)
+          // Dialog-based uploads (YouTube)
           return (
             <Dialog 
               key={opt.type} 
-              open={dialogOpen[opt.type as Exclude<ContentType, 'photo' | 'text'>]} 
-              onOpenChange={(open) => handleOpenChange(opt.type as Exclude<ContentType, 'photo' | 'text'>, open)}
+              open={dialogOpen[opt.type as Extract<ContentType, 'youtube'>]} 
+              onOpenChange={(open) => handleOpenChange(opt.type as Extract<ContentType, 'youtube'>, open)}
             >
               <DialogTrigger asChild>
                 <Button variant="outline" className="flex items-center justify-start text-left w-full h-12 hover:bg-accent/50">
@@ -266,7 +259,7 @@ const UploadSection = () => {
                     <Button variant="outline">Cancel</Button>
                   </DialogClose>
                   <Button 
-                    onClick={() => performUploadProcessing(opt.type, opt.type === 'audio' ? audioFile : undefined)} 
+                    onClick={() => performUploadProcessing(opt.type)} // For YouTube, file comes from youtubeUrl
                     disabled={opt.getIsDialogDisabled ? opt.getIsDialogDisabled() : false}
                   >
                     Add Content
@@ -282,4 +275,3 @@ const UploadSection = () => {
 };
 
 export default UploadSection;
-
