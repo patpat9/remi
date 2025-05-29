@@ -19,6 +19,7 @@ const ContentDetailView = () => {
   useEffect(() => {
     if (state.pendingMediaCommand && selectedContent && state.pendingMediaCommand.contentId === selectedContent.id) {
       const { mediaType, command } = state.pendingMediaCommand;
+      const youtubeOrigin = 'https://www.youtube.com';
 
       if (mediaType === 'audio' && audioRef.current) {
         if (command === 'play') {
@@ -30,36 +31,25 @@ const ContentDetailView = () => {
           audioRef.current.play().catch(e => console.error("Error restarting audio:", e));
         }
       } else if (mediaType === 'youtube' && youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) {
-        const youtubeOrigin = 'https://www.youtube.com'; // Target origin for postMessage
+        const postPlayCommand = () => {
+          if (youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) {
+            youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', youtubeOrigin);
+          }
+        };
+        
         if (command === 'play') {
-          youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', youtubeOrigin);
+          setTimeout(postPlayCommand, 150); // Increased delay slightly
         } else if (command === 'pause') {
           youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', youtubeOrigin);
         } else if (command === 'restart') {
-          // For restart, seek to 0 then play.
           youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[0,true]}', youtubeOrigin);
-          // A small delay might be needed before play, but postMessage is async anyway.
-          setTimeout(() => {
-             if (youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) { // Re-check ref
-                youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', youtubeOrigin);
-             }
-          }, 100); // 100ms delay
+          setTimeout(postPlayCommand, 200); // Delay after seeking for restart
         }
       }
       dispatch({ type: 'CLEAR_PENDING_MEDIA_COMMAND' });
     }
   }, [state.pendingMediaCommand, selectedContent, dispatch]);
 
-
-  if (!selectedContent) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 bg-muted/30 rounded-lg">
-        <InfoIcon className="h-12 w-12 mb-4" />
-        <p className="text-lg font-medium">Select an item</p>
-        <p className="text-sm text-center">Choose an item from the list on the left to see its details here.</p>
-      </div>
-    );
-  }
 
   const getYouTubeEmbedUrl = (url: string) => {
     let videoId;
@@ -73,12 +63,22 @@ const ContentDetailView = () => {
 
     const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
     embedUrl.searchParams.set('enablejsapi', '1');
-    // Set the origin parameter for JavaScript API control, crucial for postMessage.
+    embedUrl.searchParams.set('autoplay', '1'); // Add autoplay=1 parameter
     if (typeof window !== 'undefined') {
         embedUrl.searchParams.set('origin', window.location.origin);
     }
     return embedUrl.toString();
   };
+
+  if (!selectedContent) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 bg-muted/30 rounded-lg">
+        <InfoIcon className="h-12 w-12 mb-4" />
+        <p className="text-lg font-medium">Select an item</p>
+        <p className="text-sm text-center">Choose an item from the list on the left to see its details here.</p>
+      </div>
+    );
+  }
 
   return (
     <ScrollArea className="h-full">
