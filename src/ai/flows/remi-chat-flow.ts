@@ -102,17 +102,24 @@ const remiChatFlow = ai.defineFlow(
     outputSchema: RemiChatOutputSchema,
   },
   async (input: RemiChatInput): Promise<RemiChatOutput> => {
-    const {output: llmOutput} = await prompt(input); 
+    try {
+      const {output: llmOutput} = await prompt(input); 
     
-    if (llmOutput) {
-      return llmOutput;
-    } else {
-      // Fallback if LLM fails to generate valid output or returns null
-      console.error("Remi Chat Flow: LLM did not produce valid output that matched the schema, or returned null. Returning fallback response.");
-      return {
-        aiResponse: "I'm sorry, I had a little trouble understanding that or formulating a response in the expected format. Could you try rephrasing your message?",
-        // selectedContentIdByAi is optional, so it can be omitted or explicitly undefined here
-      };
+      if (llmOutput) {
+        return llmOutput;
+      } else {
+        // Fallback if LLM output is null after parsing (e.g. didn't match schema)
+        console.error("Remi Chat Flow: LLM did not produce valid output matching schema (llmOutput is null/undefined after parsing). Returning fallback response.");
+        return {
+          aiResponse: "I'm sorry, I had a little trouble understanding that or formulating a response in the expected format. Could you try rephrasing your message?",
+        };
+      }
+    } catch (error) {
+        // Fallback if the prompt(input) call itself throws an error
+        console.error("Remi Chat Flow: Error during AI prompt execution. Returning fallback response.", error);
+        return {
+          aiResponse: "My apologies, an unexpected error occurred while I was trying to process your request. Please try again.",
+        };
     }
   }
 );
