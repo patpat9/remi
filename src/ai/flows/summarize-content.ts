@@ -19,7 +19,7 @@ const SummarizeContentInputSchema = z.object({
 export type SummarizeContentInput = z.infer<typeof SummarizeContentInputSchema>;
 
 const SummarizeContentOutputSchema = z.object({
-  summary: z.string().describe('A brief summary of the content.'),
+  summary: z.string().describe('A summary of the content. For YouTube, this will be a more detailed overview.'),
 });
 export type SummarizeContentOutput = z.infer<typeof SummarizeContentOutputSchema>;
 
@@ -29,20 +29,24 @@ export async function contentToText(input: SummarizeContentInput): Promise<Summa
     prompt: [],
   };
 
-  // For text and YouTube, contentData is a string (raw text or URL)
-  if (input.contentType === 'text' || input.contentType === 'youtube') {
-    promptConfig.prompt.push({ text: input.contentData });
-  } 
-  // For photos and audio, contentData is a data URI
-  else if (input.contentType === 'photo' || input.contentType === 'audio') {
-    promptConfig.prompt.push({ media: { url: input.contentData } });
+  let summarizationInstruction: string;
+
+  if (input.contentType === 'youtube') {
+    promptConfig.prompt.push({ text: input.contentData }); // Pass the YouTube URL
+    summarizationInstruction = `You are an AI assistant. For the provided YouTube video URL, describe its content in detail. What are the main topics, key takeaways, and overall narrative or purpose of the video? This detailed description will be used by another AI to discuss the video with a user. Focus on extracting factual information and key points.`;
+  } else if (input.contentType === 'text') {
+    promptConfig.prompt.push({ text: input.contentData }); // Pass the raw text
+    summarizationInstruction = `You are an AI assistant that specializes in summarizing content. You will be provided with text content. Your task is to generate a concise summary of this text. Content Type: ${input.contentType}`;
+  } else if (input.contentType === 'photo' || input.contentType === 'audio') {
+    promptConfig.prompt.push({ media: { url: input.contentData } }); // Pass the data URI
+    summarizationInstruction = `You are an AI assistant that specializes in summarizing content. You will be provided with ${input.contentType} content. Your task is to generate a concise summary of the content. Content Type: ${input.contentType}`;
   } else {
     // Should not happen with current enum, but good for safety
     console.error("Unsupported content type for summarization:", input.contentType);
     return { summary: "Unsupported content type." };
   }
   
-  promptConfig.prompt.push({ text: "You are an AI assistant that specializes in summarizing content. You will be provided content of a specific type, and your task is to generate a concise summary of the content. Content Type: " + input.contentType });
+  promptConfig.prompt.push({ text: summarizationInstruction });
 
   const response = await contentToTextAi.generate(promptConfig);
   return { summary: response.text };
@@ -66,12 +70,22 @@ const summarizeContentFlowInternal = ai.defineFlow(
 
     // Replicating current direct generation logic within a flow structure:
     let promptConfig: any = { prompt: [] };
-    if (input.contentType === 'text' || input.contentType === 'youtube') {
+    let summarizationInstruction: string;
+
+    if (input.contentType === 'youtube') {
       promptConfig.prompt.push({ text: input.contentData });
+      summarizationInstruction = `You are an AI assistant. For the provided YouTube video URL, describe its content in detail. What are the main topics, key takeaways, and overall narrative or purpose of the video? This detailed description will be used by another AI to discuss the video with a user. Focus on extracting factual information and key points.`;
+    } else if (input.contentType === 'text') {
+      promptConfig.prompt.push({ text: input.contentData });
+      summarizationInstruction = `You are an AI assistant that specializes in summarizing content. You will be provided with text content. Your task is to generate a concise summary of this text. Content Type: ${input.contentType}`;
     } else if (input.contentType === 'photo' || input.contentType === 'audio') {
       promptConfig.prompt.push({ media: { url: input.contentData } });
+      summarizationInstruction = `You are an AI assistant that specializes in summarizing content. You will be provided with ${input.contentType} content. Your task is to generate a concise summary of the content. Content Type: ${input.contentType}`;
+    } else {
+      return { summary: "Unsupported content type for summarization flow." };
     }
-    promptConfig.prompt.push({ text: "You are an AI assistant that specializes in summarizing content. Content Type: " + input.contentType });
+    
+    promptConfig.prompt.push({ text: summarizationInstruction });
     
     const response = await contentToTextAi.generate(promptConfig); // Assuming contentToTextAi is suitable or use 'ai.generate'
     return { summary: response.text };
@@ -82,3 +96,4 @@ const summarizeContentFlowInternal = ai.defineFlow(
 // export async function summarizeContent(input: SummarizeContentInput): Promise<SummarizeContentOutput> {
 //   return summarizeContentFlowInternal(input);
 // }
+
