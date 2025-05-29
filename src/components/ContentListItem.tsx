@@ -43,7 +43,7 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
   return (
     <Card
       className={cn(
-        "relative cursor-pointer transition-all duration-200 ease-in-out hover:shadow-md w-full", // Added w-full
+        "relative cursor-pointer transition-all duration-200 ease-in-out hover:shadow-md w-full overflow-hidden", // Added overflow-hidden
         isSelected ? "border-primary ring-2 ring-primary shadow-lg" : "border-border"
       )}
       onClick={() => dispatch({ type: 'SELECT_CONTENT', payload: item.id })}
@@ -75,7 +75,7 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
               <ContentListItemIcon type={item.type} />
             </div>
           )}
-          <div className="flex-1 min-w-0 pr-6"> 
+          <div className="flex-1 min-w-0 pr-8"> {/* Increased pr to pr-8 for delete button clearance */}
             <CardTitle className="text-sm font-semibold truncate leading-tight" title={item.name}>
               {item.name}
             </CardTitle>
@@ -89,13 +89,13 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
       {(item.summary || isLoadingSummary) && (
         <CardContent className="px-2 pb-2 pt-0">
            {isLoadingSummary && !item.summary && (
-            <div className="flex items-center text-xs text-muted-foreground pr-6">
+            <div className="flex items-center text-xs text-muted-foreground pr-8"> {/* Increased pr to pr-8 */}
               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               Generating summary...
             </div>
           )}
           {item.summary && (
-            <p className="text-xs text-muted-foreground line-clamp-2 leading-snug pr-6 break-words">
+            <p className="text-xs text-muted-foreground line-clamp-2 leading-snug pr-8 break-words"> {/* Increased pr to pr-8 */}
               {item.summary}
             </p>
           )}
