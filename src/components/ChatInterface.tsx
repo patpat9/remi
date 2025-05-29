@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Mic, Send, Loader2, MessageSquareIcon } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import { useAppContext } from './AppProvider';
-import type { ChatMessage as ChatMessageType, SpeechRecognitionError, ContentItem } from '@/lib/types';
-import { remiChat, RemiChatInput } from '@/ai/flows/remi-chat-flow';
+import type { ChatMessage as ChatMessageType, SpeechRecognitionError } from '@/lib/types';
+import { remiChat, RemiChatInput, RemiChatOutput } from '@/ai/flows/remi-chat-flow';
 import { useToast } from '@/hooks/use-toast';
 import useSpeechToText from '@/hooks/use-speech-to-text';
 
@@ -20,7 +20,7 @@ const ChatInterface = () => {
 
   const handleSpeechResult = useCallback((finalTranscript: string) => {
     setInputText(finalTranscript);
-  }, [setInputText]);
+  }, []); // Empty dependency array as setInputText is stable
 
   const handleSpeechError = useCallback((event: SpeechRecognitionError) => {
     toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
@@ -33,18 +33,20 @@ const ChatInterface = () => {
 
   const {
     isListening,
-    transcript,
+    transcript, // Raw transcript from the hook
     error: speechError,
     startListening,
     stopListening,
     hasRecognitionSupport,
   } = useSpeechToText(speechToTextOptions);
 
+  // Effect to update inputText from the hook's transcript, but only if not currently listening to avoid conflicts.
   useEffect(() => {
-    if (transcript) {
+    if (transcript && !isListening) { // Check !isListening to prevent overwriting while user might be speaking
       setInputText(transcript);
     }
-  }, [transcript]);
+  }, [transcript, isListening]);
+
 
   useEffect(() => {
     if (speechError) {
@@ -53,8 +55,10 @@ const ChatInterface = () => {
   }, [speechError, toast]);
 
   useEffect(() => {
+    // Scroll to bottom when new messages are added
     if (chatContainerRef.current) {
       const element = chatContainerRef.current;
+      // Use setTimeout to allow the DOM to update before scrolling
       setTimeout(() => {
         element.scrollTop = element.scrollHeight;
       }, 0);
@@ -90,7 +94,7 @@ const ChatInterface = () => {
         availableContent: availableContentForAI,
       };
 
-      const result = await remiChat(aiInput);
+      const result: RemiChatOutput = await remiChat(aiInput);
       const aiResponseText = result.aiResponse;
 
       const aiMessage: ChatMessageType = {
@@ -100,6 +104,14 @@ const ChatInterface = () => {
         timestamp: new Date(),
       };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: aiMessage });
+
+      // If AI selected content, update the view
+      if (result.selectedContentIdByAi) {
+        dispatch({ type: 'SELECT_CONTENT', payload: result.selectedContentIdByAi });
+        // Optional: Add a toast or log that AI selected content
+        // toast({ title: "Remi's Recommendation", description: `Remi highlighted an item for you.` });
+      }
+
     } catch (error) {
       console.error("Error with AI chat:", error);
       toast({ title: "AI Chat Error", description: "Could not get a response from AI.", variant: "destructive" });
@@ -119,6 +131,7 @@ const ChatInterface = () => {
     if (isListening) {
       stopListening();
     } else {
+      setInputText(''); // Clear input field when starting to listen
       startListening();
     }
   };
@@ -131,7 +144,7 @@ const ChatInterface = () => {
           Chat with Remi
         </h3>
       </div>
-      <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto">
+      <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto"> {/* Changed from ScrollArea */}
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
             Chat with Remi about your uploaded content, or ask anything else!
@@ -164,3 +177,5 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
+
+    
