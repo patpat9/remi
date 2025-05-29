@@ -78,7 +78,7 @@ Available Content:
 
 Tool Available: 'selectContentTool'
 - Description: Use this tool to select a specific content item for the user to view.
-- Input: You must provide the 'Item ID' of the content item you wish to select. For example: { "contentId": "some-item-id" }
+- Input: You must provide the 'Item ID' of the content item you wish to select. For example: { "toolRequest": { "name": "selectContentTool", "input": { "contentId": "some-item-id" } } }
 
 Instructions for using 'selectContentTool':
 - If the user's query directly implies they want to see or focus on a specific content item (e.g., "show me the cat photo", "tell me more about item 'xyz'"), use the 'selectContentTool' with the corresponding 'Item ID'.
@@ -101,13 +101,18 @@ const remiChatFlow = ai.defineFlow(
     inputSchema: RemiChatInputSchema,
     outputSchema: RemiChatOutputSchema,
   },
-  async (input: RemiChatInput) => {
-    const {output} = await prompt(input); // The 'output' will conform to RemiChatOutputSchema
-                                        // Genkit handles tool execution based on the prompt config.
-                                        // If the LLM decides to use the tool AND correctly populates
-                                        // 'selectedContentIdByAi' as instructed, it will be in 'output'.
-    return output!;
+  async (input: RemiChatInput): Promise<RemiChatOutput> => {
+    const {output: llmOutput} = await prompt(input); 
+    
+    if (llmOutput) {
+      return llmOutput;
+    } else {
+      // Fallback if LLM fails to generate valid output or returns null
+      console.error("Remi Chat Flow: LLM did not produce valid output that matched the schema, or returned null. Returning fallback response.");
+      return {
+        aiResponse: "I'm sorry, I had a little trouble understanding that or formulating a response in the expected format. Could you try rephrasing your message?",
+        // selectedContentIdByAi is optional, so it can be omitted or explicitly undefined here
+      };
+    }
   }
 );
-
-    
