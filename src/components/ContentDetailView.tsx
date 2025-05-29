@@ -1,6 +1,7 @@
+
 "use client";
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -8,9 +9,48 @@ import { useAppContext } from './AppProvider';
 import { Loader2, InfoIcon } from 'lucide-react';
 
 const ContentDetailView = () => {
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
   const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
   const isLoadingSummary = selectedContent && state.isSummaryLoading[selectedContent.id];
+
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    if (state.pendingMediaCommand && selectedContent && state.pendingMediaCommand.contentId === selectedContent.id) {
+      const { mediaType, command } = state.pendingMediaCommand;
+
+      if (mediaType === 'audio' && audioRef.current) {
+        if (command === 'play') {
+          audioRef.current.play().catch(e => console.error("Error playing audio:", e));
+        } else if (command === 'pause') {
+          audioRef.current.pause();
+        } else if (command === 'restart') {
+          audioRef.current.currentTime = 0;
+          audioRef.current.play().catch(e => console.error("Error restarting audio:", e));
+        }
+      } else if (mediaType === 'youtube' && youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) {
+        const youtubeOrigin = 'https://www.youtube.com';
+        if (command === 'play') {
+          youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', youtubeOrigin);
+        } else if (command === 'pause') {
+          youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', youtubeOrigin);
+        } else if (command === 'restart') {
+          // For restart, seek to 0 then play.
+          // Note: YouTube API might need player to be ready. This is a best-effort simple approach.
+          youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[0,true]}', youtubeOrigin);
+          // A small delay might be needed before play, but postMessage is async anyway.
+          setTimeout(() => {
+             if (youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) {
+                youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', youtubeOrigin);
+             }
+          }, 100); // 100ms delay
+        }
+      }
+      dispatch({ type: 'CLEAR_PENDING_MEDIA_COMMAND' });
+    }
+  }, [state.pendingMediaCommand, selectedContent, dispatch]);
+
 
   if (!selectedContent) {
     return (
@@ -29,7 +69,15 @@ const ContentDetailView = () => {
     } else if (url.includes('youtube.com/watch?v=')) {
       videoId = new URL(url).searchParams.get('v');
     }
-    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+    
+    if (!videoId) return null;
+
+    // Ensure enablejsapi=1 is present for JavaScript control
+    const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
+    embedUrl.searchParams.set('enablejsapi', '1');
+    // It's good practice to set the origin if you're using postMessage
+    // embedUrl.searchParams.set('origin', window.location.origin); // Might be too restrictive or cause issues. Let's try without first for simplicity.
+    return embedUrl.toString();
   };
 
   return (
@@ -52,6 +100,7 @@ const ContentDetailView = () => {
             )}
             {selectedContent.type === 'youtube' && selectedContent.data && getYouTubeEmbedUrl(selectedContent.data) && (
               <iframe
+                ref={youtubeIframeRef}
                 className="w-full aspect-video rounded-md"
                 src={getYouTubeEmbedUrl(selectedContent.data)!}
                 title="YouTube video player"
@@ -61,7 +110,7 @@ const ContentDetailView = () => {
               ></iframe>
             )}
             {selectedContent.type === 'audio' && selectedContent.data && (
-              <audio controls src={selectedContent.data} className="w-full">
+              <audio ref={audioRef} controls src={selectedContent.data} className="w-full">
                 Your browser does not support the audio element.
               </audio>
             )}

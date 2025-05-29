@@ -4,12 +4,18 @@
 import type { ContentItem, ChatMessage } from '@/lib/types';
 import React, { createContext, useContext, useReducer, ReactNode, Dispatch } from 'react';
 
+interface MediaCommand {
+  contentId: string;
+  mediaType: 'audio' | 'youtube';
+  command: 'play' | 'pause' | 'restart';
+}
 interface AppState {
   contentItems: ContentItem[];
   selectedContentId: string | null;
   chatMessages: ChatMessage[];
-  isSummaryLoading: Record<string, boolean>; // To track loading state for individual content item summaries
+  isSummaryLoading: Record<string, boolean>; 
   isChatLoading: boolean;
+  pendingMediaCommand: MediaCommand | null;
 }
 
 type AppAction =
@@ -19,7 +25,9 @@ type AppAction =
   | { type: 'SET_CHAT_LOADING'; payload: boolean }
   | { type: 'SET_SUMMARY_LOADING'; payload: { id: string; isLoading: boolean } }
   | { type: 'UPDATE_CONTENT_SUMMARY'; payload: { id: string; summary: string } }
-  | { type: 'DELETE_CONTENT'; payload: string };
+  | { type: 'DELETE_CONTENT'; payload: string }
+  | { type: 'SET_PENDING_MEDIA_COMMAND'; payload: MediaCommand }
+  | { type: 'CLEAR_PENDING_MEDIA_COMMAND' };
 
 const defaultInitialState: AppState = {
   contentItems: [],
@@ -27,6 +35,7 @@ const defaultInitialState: AppState = {
   chatMessages: [],
   isSummaryLoading: {},
   isChatLoading: false,
+  pendingMediaCommand: null,
 };
 
 const AppContext = createContext<{ state: AppState; dispatch: Dispatch<AppAction> } | undefined>(undefined);
@@ -77,6 +86,16 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         contentItems: state.contentItems.filter(item => item.id !== action.payload),
         selectedContentId: state.selectedContentId === action.payload ? null : state.selectedContentId,
+      };
+    case 'SET_PENDING_MEDIA_COMMAND':
+      return {
+        ...state,
+        pendingMediaCommand: action.payload,
+      };
+    case 'CLEAR_PENDING_MEDIA_COMMAND':
+      return {
+        ...state,
+        pendingMediaCommand: null,
       };
     default:
       return state;

@@ -20,7 +20,7 @@ const ChatInterface = () => {
 
   const handleSpeechResult = useCallback((finalTranscript: string) => {
     setInputText(finalTranscript);
-  }, []); // Empty dependency array as setInputText is stable
+  }, []); 
 
   const handleSpeechError = useCallback((event: SpeechRecognitionError) => {
     toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
@@ -33,16 +33,15 @@ const ChatInterface = () => {
 
   const {
     isListening,
-    transcript, // Raw transcript from the hook
+    transcript, 
     error: speechError,
     startListening,
     stopListening,
     hasRecognitionSupport,
   } = useSpeechToText(speechToTextOptions);
 
-  // Effect to update inputText from the hook's transcript, but only if not currently listening to avoid conflicts.
   useEffect(() => {
-    if (transcript && !isListening) { // Check !isListening to prevent overwriting while user might be speaking
+    if (transcript && !isListening) { 
       setInputText(transcript);
     }
   }, [transcript, isListening]);
@@ -55,10 +54,8 @@ const ChatInterface = () => {
   }, [speechError, toast]);
 
   useEffect(() => {
-    // Scroll to bottom when new messages are added
     if (chatContainerRef.current) {
       const element = chatContainerRef.current;
-      // Use setTimeout to allow the DOM to update before scrolling
       setTimeout(() => {
         element.scrollTop = element.scrollHeight;
       }, 0);
@@ -105,11 +102,12 @@ const ChatInterface = () => {
       };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: aiMessage });
 
-      // If AI selected content, update the view
       if (result.selectedContentIdByAi) {
         dispatch({ type: 'SELECT_CONTENT', payload: result.selectedContentIdByAi });
-        // Optional: Add a toast or log that AI selected content
-        // toast({ title: "Remi's Recommendation", description: `Remi highlighted an item for you.` });
+      }
+
+      if (result.mediaCommandToExecute) {
+        dispatch({ type: 'SET_PENDING_MEDIA_COMMAND', payload: result.mediaCommandToExecute });
       }
 
     } catch (error) {
@@ -131,7 +129,7 @@ const ChatInterface = () => {
     if (isListening) {
       stopListening();
     } else {
-      setInputText(''); // Clear input field when starting to listen
+      setInputText(''); 
       startListening();
     }
   };
@@ -144,7 +142,7 @@ const ChatInterface = () => {
           Chat with Remi
         </h3>
       </div>
-      <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto"> {/* Changed from ScrollArea */}
+      <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto">
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
             Chat with Remi about your uploaded content, or ask anything else!
@@ -177,5 +175,3 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
-
-    

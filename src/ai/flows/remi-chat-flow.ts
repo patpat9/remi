@@ -24,9 +24,16 @@ const RemiChatInputSchema = z.object({
 });
 export type RemiChatInput = z.infer<typeof RemiChatInputSchema>;
 
+const MediaCommandSchema = z.object({
+  contentId: z.string().describe("The ID of the content item to control."),
+  mediaType: z.enum(['audio', 'youtube']).describe("The type of media to control."),
+  command: z.enum(['play', 'pause', 'restart']).describe("The playback command to execute."),
+});
+
 const RemiChatOutputSchema = z.object({
   aiResponse: z.string().describe("Remi's response to the user."),
   selectedContentIdByAi: z.string().optional().describe("If the AI used the selectContentTool to highlight an item, this is its ID."),
+  mediaCommandToExecute: MediaCommandSchema.optional().describe("If the AI used the controlMediaPlayback tool, this object contains the command details."),
 });
 export type RemiChatOutput = z.infer<typeof RemiChatOutputSchema>;
 
@@ -44,11 +51,25 @@ const selectContentTool = ai.defineTool(
     }),
   },
   async ({contentId}) => {
-    // This server-side function is called when the LLM uses the tool.
-    // It doesn't directly update UI, but confirms the tool was invoked.
-    // The client will use 'selectedContentIdByAi' from the flow's output to update UI.
     console.log(`AI tool 'selectContentTool' called with contentId: ${contentId}`);
     return { success: true, message: `Selection of content item ${contentId} was acknowledged by the system.` };
+  }
+);
+
+// Define the tool for controlling media playback
+const controlMediaPlaybackTool = ai.defineTool(
+  {
+    name: 'controlMediaPlayback',
+    description: 'Use this tool to control media playback (audio or YouTube videos). Provide the "contentId", "mediaType" (\'audio\' or \'youtube\'), and "command" (\'play\', \'pause\', or \'restart\').',
+    inputSchema: MediaCommandSchema,
+    outputSchema: z.object({
+      success: z.boolean(),
+      message: z.string(),
+    }),
+  },
+  async ({ contentId, mediaType, command }) => {
+    console.log(`AI tool 'controlMediaPlayback' called for contentId: ${contentId}, type: ${mediaType}, command: ${command}`);
+    return { success: true, message: `Media control command '${command}' for ${mediaType} item ${contentId} was acknowledged.` };
   }
 );
 
@@ -60,7 +81,7 @@ const prompt = ai.definePrompt({
   name: 'remiChatPrompt',
   input: {schema: RemiChatInputSchema},
   output: {schema: RemiChatOutputSchema},
-  tools: [selectContentTool], // Make the tool available to the prompt
+  tools: [selectContentTool, controlMediaPlaybackTool], // Make tools available
   prompt: `You are Remi, a friendly and helpful AI content companion. Your main role is to discuss and answer questions based on the content the user has uploaded.
 
 {{#if availableContent.length}}
@@ -76,21 +97,25 @@ Available Content:
   ---
 {{/each}}
 
-Tool Available: 'selectContentTool'
-- Description: Use this tool to select a specific content item for the user to view.
-- Input: You must provide the 'Item ID' of the content item you wish to select. For example: { "toolRequest": { "name": "selectContentTool", "input": { "contentId": "some-item-id" } } }
+Tools Available:
+1. 'selectContentTool':
+   - Description: Use this tool to select a specific content item for the user to view.
+   - Input: { "contentId": "some-item-id" }
+   - Instructions: If the user's query implies they want to see or focus on a specific content item, use this tool. When you use it, you MUST also populate 'selectedContentIdByAi' in your JSON output with the 'Item ID'.
 
-Instructions for using 'selectContentTool':
-- If the user's query directly implies they want to see or focus on a specific content item (e.g., "show me the cat photo", "tell me more about item 'xyz'"), use the 'selectContentTool' with the corresponding 'Item ID'.
-- When you decide to use the 'selectContentTool', you MUST also populate the 'selectedContentIdByAi' field in your JSON response (output) with the 'Item ID' of the content item you selected.
-- Your main textual response in 'aiResponse' should still be natural and can mention that you've highlighted or selected an item if appropriate.
+2. 'controlMediaPlayback':
+   - Description: Use this tool to control audio or YouTube video playback.
+   - Input: { "contentId": "some-item-id", "mediaType": "audio"_or_"youtube", "command": "play"_or_"pause"_or_"restart" }
+   - Instructions: If the user asks to play, pause, or restart an audio or YouTube video, use this tool with the corresponding 'Item ID', 'mediaType', and 'command'. When you use this tool, you MUST also populate 'mediaCommandToExecute' in your JSON output with the exact details you sent to the tool. Only use this tool for 'audio' or 'youtube' type content.
+
+Your main textual response in 'aiResponse' should still be natural.
 {{else}}
 No content has been uploaded yet. You can chat with the user generally, or encourage them to upload some content to discuss.
 {{/if}}
 
 User's Message: {{{userMessage}}}
 
-Based on the user's message and the available content, provide your 'aiResponse'. If you use the 'selectContentTool', ensure you also set 'selectedContentIdByAi' in your output.
+Based on the user's message and the available content, provide your 'aiResponse'. If you use any tools, ensure you also set the corresponding fields ('selectedContentIdByAi' or 'mediaCommandToExecute') in your output.
 Remi's JSON Output:`,
 });
 
