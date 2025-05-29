@@ -18,8 +18,12 @@ const ContentDetailView = () => {
 
   useEffect(() => {
     if (state.pendingMediaCommand && selectedContent && state.pendingMediaCommand.contentId === selectedContent.id) {
-      const { mediaType, command } = state.pendingMediaCommand;
+      const commandDetails = { ...state.pendingMediaCommand }; // Clone to avoid issues if state changes during async ops
+      const { mediaType, command } = commandDetails;
       const youtubeOrigin = 'https://www.youtube.com';
+
+      let commandProcessed = false;
+      let commandIsAsync = false;
 
       if (mediaType === 'audio' && audioRef.current) {
         if (command === 'play') {
@@ -30,7 +34,9 @@ const ContentDetailView = () => {
           audioRef.current.currentTime = 0;
           audioRef.current.play().catch(e => console.error("Error restarting audio:", e));
         }
-      } else if (mediaType === 'youtube' && youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) {
+        commandProcessed = true;
+      } else if (mediaType === 'youtube' && youtubeIframeRef.current) {
+        commandIsAsync = true; // YouTube commands are async due to setTimeout
         const postPlayCommand = () => {
           if (youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) {
             youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', youtubeOrigin);
@@ -38,17 +44,42 @@ const ContentDetailView = () => {
         };
         
         if (command === 'play') {
-          setTimeout(postPlayCommand, 150); // Increased delay slightly
+          setTimeout(() => {
+            postPlayCommand();
+            // Check if the command is still the one we intended to process
+            if (state.pendingMediaCommand &&
+                commandDetails.contentId === state.pendingMediaCommand.contentId &&
+                commandDetails.command === state.pendingMediaCommand.command) {
+                 dispatch({ type: 'CLEAR_PENDING_MEDIA_COMMAND' });
+            }
+          }, 250); 
         } else if (command === 'pause') {
-          youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', youtubeOrigin);
+          if (youtubeIframeRef.current.contentWindow) {
+            youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', youtubeOrigin);
+          }
+          commandProcessed = true; // Pause is synchronous in terms of dispatching
+          commandIsAsync = false; // but the actual effect on player is async
         } else if (command === 'restart') {
-          youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[0,true]}', youtubeOrigin);
-          setTimeout(postPlayCommand, 200); // Delay after seeking for restart
+           if (youtubeIframeRef.current.contentWindow) {
+            youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[0,true]}', youtubeOrigin);
+          }
+          setTimeout(() => {
+            postPlayCommand();
+            if (state.pendingMediaCommand &&
+                commandDetails.contentId === state.pendingMediaCommand.contentId &&
+                commandDetails.command === state.pendingMediaCommand.command) {
+                 dispatch({ type: 'CLEAR_PENDING_MEDIA_COMMAND' });
+            }
+          }, 300); 
         }
       }
-      dispatch({ type: 'CLEAR_PENDING_MEDIA_COMMAND' });
+
+      // Clear command for synchronous operations or if it's a type that doesn't clear itself async
+      if (commandProcessed && !commandIsAsync) {
+        dispatch({ type: 'CLEAR_PENDING_MEDIA_COMMAND' });
+      }
     }
-  }, [state.pendingMediaCommand, selectedContent, dispatch]);
+  }, [state.pendingMediaCommand, selectedContent, dispatch, state.contentItems]);
 
 
   const getYouTubeEmbedUrl = (url: string) => {
@@ -63,7 +94,7 @@ const ContentDetailView = () => {
 
     const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
     embedUrl.searchParams.set('enablejsapi', '1');
-    embedUrl.searchParams.set('autoplay', '1'); // Add autoplay=1 parameter
+    embedUrl.searchParams.set('autoplay', '1'); 
     if (typeof window !== 'undefined') {
         embedUrl.searchParams.set('origin', window.location.origin);
     }
@@ -100,6 +131,7 @@ const ContentDetailView = () => {
             )}
             {selectedContent.type === 'youtube' && selectedContent.data && getYouTubeEmbedUrl(selectedContent.data) && (
               <iframe
+                key={selectedContent.id} // Add key to ensure iframe reloads if video ID changes
                 ref={youtubeIframeRef}
                 className="w-full aspect-video rounded-md"
                 src={getYouTubeEmbedUrl(selectedContent.data)!}
@@ -110,7 +142,7 @@ const ContentDetailView = () => {
               ></iframe>
             )}
             {selectedContent.type === 'audio' && selectedContent.data && (
-              <audio ref={audioRef} controls src={selectedContent.data} className="w-full">
+              <audio ref={audioRef} controls src={selectedContent.data} className="w-full" autoPlay={state.pendingMediaCommand?.command === 'play' && state.pendingMediaCommand?.contentId === selectedContent.id}>
                 Your browser does not support the audio element.
               </audio>
             )}
@@ -144,3 +176,6 @@ const ContentDetailView = () => {
 };
 
 export default ContentDetailView;
+
+
+    
