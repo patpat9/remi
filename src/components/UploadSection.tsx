@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, ChangeEvent, useRef } from 'react';
@@ -145,7 +146,7 @@ const UploadSection = () => {
          }
       }
     } catch (error: any) {
-      console.error("Error processing upload or summary:", error);
+      console.error(`Error processing ${itemName}:`, error);
       toast({ title: "Upload Error", description: error.message || `Could not process ${itemName || 'content'} or generate summary.`, variant: "destructive" });
       dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
     }
@@ -154,10 +155,20 @@ const UploadSection = () => {
   const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>, type: 'photo' | 'text' | 'audio') => {
     if (event.target.files && event.target.files.length > 0) {
       const files = Array.from(event.target.files); // Convert FileList to Array
-      for (const file of files) {
-        // Process each file. performUploadProcessing is async and handles its own ID/loading state.
-        await performUploadProcessing(type, file);
+      
+      const uploadPromises = files.map(file => performUploadProcessing(type, file));
+      
+      try {
+        await Promise.all(uploadPromises);
+        // Optional: A single toast after all parallel uploads are attempted.
+        // toast({ title: "Uploads Initiated", description: `${files.length} file(s) are being processed.`});
+      } catch (error) {
+        // Promise.all rejects on the first error. Individual errors are handled in performUploadProcessing.
+        // This catch is more for a general failure if needed, but individual toasts are likely sufficient.
+        console.error("Error during parallel uploads:", error);
+        // toast({ title: "Batch Upload Error", description: "Some files could not be processed.", variant: "destructive" });
       }
+
       if (event.target) {
         event.target.value = ""; // Reset file input to allow selecting the same file(s) again
       }
@@ -235,7 +246,7 @@ const UploadSection = () => {
                   type="file"
                   ref={opt.fileInputRef}
                   accept={opt.fileAccept}
-                  multiple={opt.isMultiple} // Added multiple attribute
+                  multiple={opt.isMultiple} 
                   style={{ display: 'none' }}
                   onChange={(e) => handleFileSelected(e, opt.type as 'photo' | 'text' | 'audio')}
                 />
@@ -285,3 +296,6 @@ const UploadSection = () => {
 };
 
 export default UploadSection;
+
+
+    
