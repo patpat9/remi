@@ -20,17 +20,28 @@ const ChatInterface = () => {
   const finalTranscriptRef = useRef<string>('');
   const spacebarIsControllingPttRef = useRef(false);
 
-  const speakText = (text: string) => {
+  const speakText = useCallback((text: string) => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel(); 
+      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.5; 
+      utterance.rate = 1.5;
       utterance.lang = 'en-US';
+
+      utterance.onstart = () => {
+        dispatch({ type: 'ADD_DUCKING_REASON', payload: 'tts' });
+      };
+      utterance.onend = () => {
+        dispatch({ type: 'REMOVE_DUCKING_REASON', payload: 'tts' });
+      };
+      utterance.onerror = () => {
+        dispatch({ type: 'REMOVE_DUCKING_REASON', payload: 'tts' });
+        console.warn("SpeechSynthesisUtterance.onerror");
+      };
       window.speechSynthesis.speak(utterance);
     } else {
       console.warn("Browser does not support Speech Synthesis.");
     }
-  };
+  }, [dispatch]);
 
   const handleSendMessage = useCallback(async (textOverride?: string) => {
     const messageText = (textOverride || inputText).trim();
@@ -43,8 +54,8 @@ const ChatInterface = () => {
       timestamp: new Date(),
     };
     dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMessage });
-    
-    if (!textOverride) { 
+
+    if (!textOverride) {
         setInputText('');
     }
 
@@ -91,7 +102,7 @@ const ChatInterface = () => {
         timestamp: new Date(),
       };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: aiMessage });
-      speakText(aiResponseText); 
+      speakText(aiResponseText);
 
       if (result.selectedContentIdByAi) {
         dispatch({ type: 'SELECT_CONTENT', payload: result.selectedContentIdByAi });
@@ -116,32 +127,37 @@ const ChatInterface = () => {
         timestamp: new Date(),
       };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: errorMessage });
-      speakText("Sorry, I encountered an error. Please try again."); 
+      speakText("Sorry, I encountered an error. Please try again.");
     } finally {
       dispatch({ type: 'SET_CHAT_LOADING', payload: false });
     }
-  }, [dispatch, state.contentItems, state.selectedContentId, state.isChatLoading, toast, inputText]);
+  }, [dispatch, state.contentItems, state.selectedContentId, state.isChatLoading, toast, inputText, speakText]);
 
-  const onSpeechResultCallback = useCallback((event: SpeechRecognitionEvent) => {
-    let fullFinalTranscript = ""; 
+ const onSpeechResultCallback = useCallback((event: SpeechRecognitionEvent) => {
+    let fullFinalTranscript = "";
     let currentInterimTranscript = "";
 
     for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         if (result.isFinal) {
-            fullFinalTranscript += result[0].transcript + " "; 
+            fullFinalTranscript += result[0].transcript + " ";
         } else {
             currentInterimTranscript += result[0].transcript;
         }
     }
-    fullFinalTranscript = fullFinalTranscript.trim(); 
+    fullFinalTranscript = fullFinalTranscript.trim();
 
     if (fullFinalTranscript) {
         finalTranscriptRef.current = fullFinalTranscript;
     } else if (event.results.length > 0 && event.results[event.results.length-1].isFinal === false && !finalTranscriptRef.current && !currentInterimTranscript) {
+       // This case handles if the last result is interim, no final results yet, and finalTranscriptRef is empty, AND interim is also empty (e.g. silence start)
+       // We might not want to clear finalTranscriptRef.current here unless specifically needed.
+       // If the goal is to ensure finalTranscriptRef only gets populated by truly final results, this line is okay.
+       // However, it might clear a previously stored final transcript if a new utterance starts with silence.
+       // For push-to-talk, finalTranscriptRef is usually cleared on mic-down, so this might be fine.
         finalTranscriptRef.current = '';
     }
-    
+
     const displayTranscript = (finalTranscriptRef.current ? finalTranscriptRef.current + " " : "") + currentInterimTranscript.trim();
     setInputText(displayTranscript.trim());
 
@@ -150,14 +166,17 @@ const ChatInterface = () => {
 
   const handleSpeechError = useCallback((event: SpeechRecognitionError) => {
     toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
-    finalTranscriptRef.current = ''; 
+    finalTranscriptRef.current = '';
     setInputText('');
-  }, [toast]);
-  
+    dispatch({ type: 'REMOVE_DUCKING_REASON', payload: 'recording' }); // Unduck on error
+  }, [toast, dispatch]);
+
   const onSpeechEndCallback = useCallback(() => {
     // This callback is primarily for the hook to update its 'isListening' state.
+    // Message sending is handled by handleMicMouseUp.
+    // No need to dispatch REMOVE_DUCKING_REASON here as handleMicMouseUp handles it.
   }, []);
-  
+
   const speechToTextOptions = useMemo(() => ({
     onResult: onSpeechResultCallback,
     onError: handleSpeechError,
@@ -174,43 +193,53 @@ const ChatInterface = () => {
 
   const handleMicMouseDown = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel(); // Stop any ongoing TTS
+      window.speechSynthesis.cancel();
     }
     if (state.isChatLoading || !hasRecognitionSupport || isListening) return;
-    finalTranscriptRef.current = ''; 
-    setInputText(''); 
-    startListening();
-  }, [state.isChatLoading, hasRecognitionSupport, startListening, isListening]);
+    dispatch({ type: 'ADD_DUCKING_REASON', payload: 'recording' });
+    finalTranscriptRef.current = '';
+    setInputText('');
+    try {
+        startListening();
+    } catch (e) {
+        console.error("Error starting speech recognition:", e);
+        dispatch({ type: 'REMOVE_DUCKING_REASON', payload: 'recording' }); // Unduck if startListening fails
+    }
+  }, [state.isChatLoading, hasRecognitionSupport, startListening, isListening, dispatch]);
 
   const handleMicMouseUp = useCallback(() => {
-    if (!hasRecognitionSupport) return; 
-    
-    stopListening(); 
+    if (!hasRecognitionSupport) {
+        dispatch({ type: 'REMOVE_DUCKING_REASON', payload: 'recording' }); // Ensure unducking if no support
+        return;
+    }
+    stopListening();
+    dispatch({ type: 'REMOVE_DUCKING_REASON', payload: 'recording' });
 
     setTimeout(() => {
       const messageToSend = finalTranscriptRef.current.trim();
       if (messageToSend) {
         handleSendMessage(messageToSend);
       }
-      finalTranscriptRef.current = ''; 
-      setInputText(''); 
-    }, 50); 
+      finalTranscriptRef.current = '';
+      setInputText('');
+    }, 50);
 
-  }, [hasRecognitionSupport, stopListening, handleSendMessage]);
+  }, [hasRecognitionSupport, stopListening, handleSendMessage, dispatch]);
 
 
   useEffect(() => {
     if (speechError) {
       toast({ title: "Voice Recognition Error", description: speechError, variant: "destructive" });
+      dispatch({ type: 'REMOVE_DUCKING_REASON', payload: 'recording' }); // Unduck on speech error
     }
-  }, [speechError, toast]);
+  }, [speechError, toast, dispatch]);
 
   useEffect(() => {
     const div = chatContainerRef.current;
     if (div) {
       const timer = setTimeout(() => {
         div.scrollTop = div.scrollHeight;
-      }, 50); 
+      }, 50);
       return () => clearTimeout(timer);
     }
   }, [state.chatMessages]);
@@ -222,12 +251,12 @@ const ChatInterface = () => {
         event.key === ' ' &&
         document.activeElement?.tagName !== 'INPUT' &&
         document.activeElement?.tagName !== 'TEXTAREA' &&
-        !isListening && 
-        !state.isChatLoading && 
+        !isListening &&
+        !state.isChatLoading &&
         hasRecognitionSupport
       ) {
         event.preventDefault();
-        handleMicMouseDown(); 
+        handleMicMouseDown();
         spacebarIsControllingPttRef.current = true;
       }
     };
@@ -235,11 +264,11 @@ const ChatInterface = () => {
     const handleGlobalKeyUp = (event: KeyboardEvent) => {
       if (
         event.key === ' ' &&
-        spacebarIsControllingPttRef.current && 
-        hasRecognitionSupport 
+        spacebarIsControllingPttRef.current &&
+        hasRecognitionSupport
       ) {
         event.preventDefault();
-        handleMicMouseUp(); 
+        handleMicMouseUp();
         spacebarIsControllingPttRef.current = false;
       }
     };
@@ -257,11 +286,12 @@ const ChatInterface = () => {
     // Cleanup effect for spacebar PTT if component unmounts
     return () => {
       if (spacebarIsControllingPttRef.current) {
-        stopListening(); 
+        stopListening();
+        dispatch({ type: 'REMOVE_DUCKING_REASON', payload: 'recording' });
         spacebarIsControllingPttRef.current = false;
       }
     };
-  }, [stopListening]);
+  }, [stopListening, dispatch]);
 
 
   return (
@@ -284,14 +314,14 @@ const ChatInterface = () => {
       <div className="p-3 border-t border-border bg-muted/30">
         <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center space-x-2">
           {hasRecognitionSupport && (
-          <Button 
-            type="button" 
-            variant="outline" 
-            size="icon" 
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
             onMouseDown={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseDown(); }}
             onMouseUp={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseUp(); }}
             onTouchStart={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseDown(); }}
-            onTouchEnd={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseUp(); }}     
+            onTouchEnd={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseUp(); }}
             disabled={state.isChatLoading}
             className={isListening ? "bg-accent text-accent-foreground" : ""}
             aria-label="Record voice message (or hold Spacebar)"
@@ -304,10 +334,10 @@ const ChatInterface = () => {
             placeholder={isListening ? "Listening..." : "Type or hold Space/Mic to talk..."}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            disabled={state.isChatLoading || (isListening && !spacebarIsControllingPttRef.current && document.activeElement?.tagName !== 'INPUT')}
+            disabled={state.isChatLoading || (isListening && spacebarIsControllingPttRef.current && document.activeElement?.tagName !== 'INPUT')}
             className="flex-1"
           />
-          <Button type="submit" size="icon" disabled={state.isChatLoading || (!inputText.trim() && !isListening)}>
+          <Button type="submit" size="icon" disabled={state.isChatLoading || (!inputText.trim() && !isListening) || (isListening && spacebarIsControllingPttRef.current)}>
             {state.isChatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send />}
           </Button>
         </form>
@@ -317,6 +347,3 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
-    
-
-    

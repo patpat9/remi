@@ -13,9 +13,10 @@ interface AppState {
   contentItems: ContentItem[];
   selectedContentId: string | null;
   chatMessages: ChatMessage[];
-  isSummaryLoading: Record<string, boolean>; 
+  isSummaryLoading: Record<string, boolean>;
   isChatLoading: boolean;
   pendingMediaCommand: MediaCommand | null;
+  activeDuckingReasons: Set<'tts' | 'recording'>; // New state for ducking
 }
 
 type AppAction =
@@ -27,7 +28,9 @@ type AppAction =
   | { type: 'UPDATE_CONTENT_SUMMARY'; payload: { id: string; summary: string } }
   | { type: 'DELETE_CONTENT'; payload: string }
   | { type: 'SET_PENDING_MEDIA_COMMAND'; payload: MediaCommand }
-  | { type: 'CLEAR_PENDING_MEDIA_COMMAND' };
+  | { type: 'CLEAR_PENDING_MEDIA_COMMAND' }
+  | { type: 'ADD_DUCKING_REASON'; payload: 'tts' | 'recording' } // New action
+  | { type: 'REMOVE_DUCKING_REASON'; payload: 'tts' | 'recording' }; // New action
 
 const defaultInitialState: AppState = {
   contentItems: [],
@@ -36,6 +39,7 @@ const defaultInitialState: AppState = {
   isSummaryLoading: {},
   isChatLoading: false,
   pendingMediaCommand: null,
+  activeDuckingReasons: new Set(), // Initialize as empty set
 };
 
 const AppContext = createContext<{ state: AppState; dispatch: Dispatch<AppAction> } | undefined>(undefined);
@@ -97,6 +101,16 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         pendingMediaCommand: null,
       };
+    case 'ADD_DUCKING_REASON': {
+      const newReasons = new Set(state.activeDuckingReasons);
+      newReasons.add(action.payload);
+      return { ...state, activeDuckingReasons: newReasons };
+    }
+    case 'REMOVE_DUCKING_REASON': {
+      const newReasons = new Set(state.activeDuckingReasons);
+      newReasons.delete(action.payload);
+      return { ...state, activeDuckingReasons: newReasons };
+    }
     default:
       return state;
   }

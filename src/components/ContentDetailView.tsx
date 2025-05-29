@@ -12,13 +12,14 @@ const ContentDetailView = () => {
   const { state, dispatch } = useAppContext();
   const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
   const isLoadingSummary = selectedContent && state.isSummaryLoading[selectedContent.id];
+  const isDuckingActive = state.activeDuckingReasons.size > 0;
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     if (state.pendingMediaCommand && selectedContent && state.pendingMediaCommand.contentId === selectedContent.id) {
-      const commandDetails = { ...state.pendingMediaCommand }; // Clone to avoid issues if state changes during async ops
+      const commandDetails = { ...state.pendingMediaCommand };
       const { mediaType, command } = commandDetails;
       const youtubeOrigin = 'https://www.youtube.com';
 
@@ -36,29 +37,28 @@ const ContentDetailView = () => {
         }
         commandProcessed = true;
       } else if (mediaType === 'youtube' && youtubeIframeRef.current) {
-        commandIsAsync = true; // YouTube commands are async due to setTimeout
+        commandIsAsync = true;
         const postPlayCommand = () => {
           if (youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) {
             youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', youtubeOrigin);
           }
         };
-        
+
         if (command === 'play') {
           setTimeout(() => {
             postPlayCommand();
-            // Check if the command is still the one we intended to process
             if (state.pendingMediaCommand &&
                 commandDetails.contentId === state.pendingMediaCommand.contentId &&
                 commandDetails.command === state.pendingMediaCommand.command) {
                  dispatch({ type: 'CLEAR_PENDING_MEDIA_COMMAND' });
             }
-          }, 250); 
+          }, 250);
         } else if (command === 'pause') {
           if (youtubeIframeRef.current.contentWindow) {
             youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', youtubeOrigin);
           }
-          commandProcessed = true; // Pause is synchronous in terms of dispatching
-          commandIsAsync = false; // but the actual effect on player is async
+          commandProcessed = true;
+          commandIsAsync = false;
         } else if (command === 'restart') {
            if (youtubeIframeRef.current.contentWindow) {
             youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[0,true]}', youtubeOrigin);
@@ -70,16 +70,34 @@ const ContentDetailView = () => {
                 commandDetails.command === state.pendingMediaCommand.command) {
                  dispatch({ type: 'CLEAR_PENDING_MEDIA_COMMAND' });
             }
-          }, 300); 
+          }, 300);
         }
       }
 
-      // Clear command for synchronous operations or if it's a type that doesn't clear itself async
       if (commandProcessed && !commandIsAsync) {
         dispatch({ type: 'CLEAR_PENDING_MEDIA_COMMAND' });
       }
     }
   }, [state.pendingMediaCommand, selectedContent, dispatch, state.contentItems]);
+
+
+  // Effect for audio ducking
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    const youtubeWin = youtubeIframeRef.current?.contentWindow;
+    const youtubeOrigin = 'https://www.youtube.com';
+
+    if (!selectedContent || (selectedContent.type !== 'audio' && selectedContent.type !== 'youtube')) {
+      return; // Only apply to playable selected content
+    }
+
+    if (selectedContent.type === 'audio' && audioEl) {
+      audioEl.volume = isDuckingActive ? 0.2 : 1.0;
+    } else if (selectedContent.type === 'youtube' && youtubeWin) {
+      const targetVolume = isDuckingActive ? 20 : 100;
+      youtubeWin.postMessage(`{"event":"command","func":"setVolume","args":[${targetVolume}]}`, youtubeOrigin);
+    }
+  }, [isDuckingActive, selectedContent?.id, selectedContent?.type]); // Re-run if ducking state or selected content changes
 
 
   const getYouTubeEmbedUrl = (url: string) => {
@@ -89,12 +107,12 @@ const ContentDetailView = () => {
     } else if (url.includes('youtube.com/watch?v=')) {
       videoId = new URL(url).searchParams.get('v');
     }
-    
+
     if (!videoId) return null;
 
     const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
     embedUrl.searchParams.set('enablejsapi', '1');
-    embedUrl.searchParams.set('autoplay', '1'); 
+    embedUrl.searchParams.set('autoplay', '0'); // Keep autoplay=0 by default, controlled by JS
     if (typeof window !== 'undefined') {
         embedUrl.searchParams.set('origin', window.location.origin);
     }
@@ -121,17 +139,17 @@ const ContentDetailView = () => {
         <CardContent className="p-4 space-y-4">
           <div className="min-h-[150px] flex items-center justify-center bg-muted rounded-md overflow-hidden">
             {selectedContent.type === 'photo' && selectedContent.data && (
-              <Image 
-                src={selectedContent.data} 
-                alt={selectedContent.name} 
-                width={500} height={300} 
-                className="object-contain max-w-full max-h-full" // Changed max-h-[300px] to max-h-full
+              <Image
+                src={selectedContent.data}
+                alt={selectedContent.name}
+                width={500} height={300}
+                className="object-contain max-w-full max-h-full"
                 data-ai-hint="photo detail"
               />
             )}
             {selectedContent.type === 'youtube' && selectedContent.data && getYouTubeEmbedUrl(selectedContent.data) && (
               <iframe
-                key={selectedContent.id} // Add key to ensure iframe reloads if video ID changes
+                key={selectedContent.id}
                 ref={youtubeIframeRef}
                 className="w-full aspect-video rounded-md"
                 src={getYouTubeEmbedUrl(selectedContent.data)!}
@@ -152,7 +170,7 @@ const ContentDetailView = () => {
               </ScrollArea>
             )}
           </div>
-          
+
           <div>
             <h3 className="text-md font-semibold mb-1 text-primary">Summary</h3>
             {isLoadingSummary && !selectedContent.summary && (
@@ -176,4 +194,3 @@ const ContentDetailView = () => {
 };
 
 export default ContentDetailView;
-    
