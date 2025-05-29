@@ -119,13 +119,13 @@ const ContentDetailView = () => {
           <CardDescription>{new Date(selectedContent.createdAt).toLocaleString()}</CardDescription>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
-          <div className="max-h-[300px] min-h-[150px] flex items-center justify-center bg-muted rounded-md overflow-hidden">
+          <div className="min-h-[150px] flex items-center justify-center bg-muted rounded-md overflow-hidden">
             {selectedContent.type === 'photo' && selectedContent.data && (
               <Image 
                 src={selectedContent.data} 
                 alt={selectedContent.name} 
                 width={500} height={300} 
-                className="object-contain max-w-full max-h-[300px]"
+                className="object-contain max-w-full max-h-full" // Changed max-h-[300px] to max-h-full
                 data-ai-hint="photo detail"
               />
             )}
@@ -176,6 +176,4 @@ const ContentDetailView = () => {
 };
 
 export default ContentDetailView;
-
-
     
