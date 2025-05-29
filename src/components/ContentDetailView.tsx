@@ -180,12 +180,10 @@ const ContentDetailView = () => {
               </div>
             )}
             {selectedContent.summary ? (
-              <ScrollArea className="max-h-28 rounded-md bg-muted/50">
-                <div className="p-3">
-                  <p className="text-sm text-foreground whitespace-pre-wrap break-words">
-                    {selectedContent.summary}
-                  </p>
-                </div>
+              <ScrollArea className="h-28 rounded-md bg-muted/50"> {/* Use fixed height */}
+                <p className="text-sm text-foreground whitespace-pre-wrap break-words p-3"> {/* Add padding directly to the p tag */}
+                  {selectedContent.summary}
+                </p>
               </ScrollArea>
             ) : !isLoadingSummary && (
               <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">No summary available or still generating.</p>
