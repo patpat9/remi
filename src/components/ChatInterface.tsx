@@ -24,6 +24,7 @@ const ChatInterface = () => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel(); // Stop any currently speaking utterances
       const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.5; // Set speech rate to 1.5x
       // You can configure voice, rate, pitch etc. here if needed
       // e.g., const voices = window.speechSynthesis.getVoices();
       // utterance.voice = voices.find(voice => voice.name === 'Google UK English Female'); // Example
@@ -177,10 +178,10 @@ const ChatInterface = () => {
 
   const handleMicMouseUp = useCallback(() => {
     if (!hasRecognitionSupport) return; 
-    stopListening(); 
-
-    // Short delay to allow final speech recognition results to process
+    
+    // Slightly delay processing to catch final speech results
     setTimeout(() => {
+      stopListening(); 
       const messageToSend = finalTranscriptRef.current.trim();
       if (messageToSend) {
         handleSendMessage(messageToSend);
@@ -201,7 +202,6 @@ const ChatInterface = () => {
   useEffect(() => {
     const div = chatContainerRef.current;
     if (div) {
-      // Using a short timeout to ensure DOM updates (new message) are flushed before scrolling
       const timer = setTimeout(() => {
         div.scrollTop = div.scrollHeight;
       }, 0);
@@ -230,7 +230,7 @@ const ChatInterface = () => {
     const handleGlobalKeyUp = (event: KeyboardEvent) => {
       if (
         event.key === ' ' &&
-        spacebarIsControllingPttRef.current && // Check if spacebar initiated this PTT
+        spacebarIsControllingPttRef.current && 
         hasRecognitionSupport 
       ) {
         event.preventDefault();
@@ -251,13 +251,12 @@ const ChatInterface = () => {
   // Effect for cleanup on unmount if spacebar PTT was active
   useEffect(() => {
     return () => {
-      // This cleanup runs if the component unmounts OR if dependencies change causing re-run
       if (spacebarIsControllingPttRef.current) {
         stopListening(); 
         spacebarIsControllingPttRef.current = false;
       }
     };
-  }, [stopListening]); // stopListening is stable if its dependencies in useSpeechToText are stable.
+  }, [stopListening]);
 
 
   return (
