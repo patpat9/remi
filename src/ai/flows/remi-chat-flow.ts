@@ -32,7 +32,7 @@ const MediaCommandSchema = z.object({
 
 const RemiChatOutputSchema = z.object({
   aiResponse: z.string().describe("Remi's response to the user."),
-  selectedContentIdByAi: z.string().optional().describe("If the AI used the selectContentTool to highlight an item, this is its ID."),
+  selectedContentIdByAi: z.string().optional().describe("If the AI used the selectContentTool or controlMediaPlayback tool to highlight an item, this is its ID."),
   mediaCommandToExecute: MediaCommandSchema.optional().describe("If the AI used the controlMediaPlayback tool, this object contains the command details."),
 });
 export type RemiChatOutput = z.infer<typeof RemiChatOutputSchema>;
@@ -106,7 +106,11 @@ Tools Available:
 2. 'controlMediaPlayback':
    - Description: Use this tool to control audio or YouTube video playback.
    - Input: { "contentId": "some-item-id", "mediaType": "audio"_or_"youtube", "command": "play"_or_"pause"_or_"restart" }
-   - Instructions: If the user asks to play, pause, or restart an audio or YouTube video, use this tool with the corresponding 'Item ID', 'mediaType', and 'command'. When you use this tool, you MUST also populate 'mediaCommandToExecute' in your JSON output with the exact details you sent to the tool. Only use this tool for 'audio' or 'youtube' type content.
+   - Instructions: If the user asks to play, pause, or restart an audio or YouTube video, use this tool with the corresponding 'Item ID', 'mediaType', and 'command'.
+     When you use this tool, you MUST:
+     1. Populate 'mediaCommandToExecute' in your JSON output with the exact details you sent to the tool.
+     2. Populate 'selectedContentIdByAi' in your JSON output with the 'Item ID' of the media you are controlling. This ensures the correct item is displayed when the media command is issued.
+     Only use this tool for 'audio' or 'youtube' type content.
 
 Your main textual response in 'aiResponse' should still be natural.
 {{else}}
@@ -115,7 +119,7 @@ No content has been uploaded yet. You can chat with the user generally, or encou
 
 User's Message: {{{userMessage}}}
 
-Based on the user's message and the available content, provide your 'aiResponse'. If you use any tools, ensure you also set the corresponding fields ('selectedContentIdByAi' or 'mediaCommandToExecute') in your output.
+Based on the user's message and the available content, provide your 'aiResponse'. If you use any tools, ensure you also set the corresponding fields ('selectedContentIdByAi' and/or 'mediaCommandToExecute') in your output.
 Remi's JSON Output:`,
 });
 
@@ -148,3 +152,4 @@ const remiChatFlow = ai.defineFlow(
     }
   }
 );
+
