@@ -17,11 +17,11 @@ interface ContentListItemProps {
 
 const ContentListItemIcon = ({ type }: { type: ContentItem['type'] }) => {
   switch (type) {
-    case 'photo': return <ImageIcon className="h-6 w-6 text-muted-foreground" />;
-    case 'youtube': return <YoutubeIcon className="h-6 w-6 text-muted-foreground" />;
-    case 'audio': return <FileAudioIcon className="h-6 w-6 text-muted-foreground" />;
-    case 'text': return <FileTextIcon className="h-6 w-6 text-muted-foreground" />;
-    default: return <FileTextIcon className="h-6 w-6 text-muted-foreground" />;
+    case 'photo': return <ImageIcon className="h-5 w-5 text-muted-foreground" />;
+    case 'youtube': return <YoutubeIcon className="h-5 w-5 text-muted-foreground" />;
+    case 'audio': return <FileAudioIcon className="h-5 w-5 text-muted-foreground" />;
+    case 'text': return <FileTextIcon className="h-5 w-5 text-muted-foreground" />;
+    default: return <FileTextIcon className="h-5 w-5 text-muted-foreground" />;
   }
 };
 
@@ -33,7 +33,6 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
 
   const handleDelete = (event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent Card onClick from firing
-    // Optional: Add confirmation dialog here in the future
     dispatch({ type: 'DELETE_CONTENT', payload: item.id });
     toast({
       title: "Content Deleted",
@@ -50,27 +49,27 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
       onClick={() => dispatch({ type: 'SELECT_CONTENT', payload: item.id })}
       aria-current={isSelected ? "page" : undefined}
     >
-      <CardHeader className="p-3 flex justify-between items-start">
-        <div className="flex items-start space-x-3 flex-1 min-w-0">
+      <CardHeader className="p-2 flex justify-between items-start">
+        <div className="flex items-start space-x-2 flex-1 min-w-0">
           {item.thumbnail ? (
             <Image 
               src={item.thumbnail} 
               alt={item.name} 
-              width={64} 
-              height={64} 
-              className="rounded-md object-cover h-16 w-16 aspect-square" 
+              width={48} 
+              height={48} 
+              className="rounded-md object-cover h-12 w-12 aspect-square" 
               data-ai-hint={item.type === 'photo' ? 'item preview' : `${item.type} content`}
             />
           ) : (
-            <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center">
+            <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center shrink-0">
               <ContentListItemIcon type={item.type} />
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-sm font-semibold truncate" title={item.name}>
+            <CardTitle className="text-sm font-semibold truncate leading-tight" title={item.name}>
               {item.name}
             </CardTitle>
-            <CardDescription className="text-xs text-muted-foreground">
+            <CardDescription className="text-xs text-muted-foreground leading-tight pt-0.5">
               {new Date(item.createdAt).toLocaleDateString()}
             </CardDescription>
           </div>
@@ -78,7 +77,7 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0 ml-2"
+          className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0 ml-1"
           onClick={handleDelete}
           aria-label={`Delete ${item.name}`}
         >
@@ -86,7 +85,7 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
         </Button>
       </CardHeader>
       {(item.summary || isLoadingSummary) && (
-        <CardContent className="p-3 pt-0">
+        <CardContent className="px-2 pb-2 pt-0">
            {isLoadingSummary && !item.summary && (
             <div className="flex items-center text-xs text-muted-foreground">
               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -94,7 +93,7 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
             </div>
           )}
           {item.summary && (
-            <p className="text-xs text-muted-foreground line-clamp-2">
+            <p className="text-xs text-muted-foreground line-clamp-2 leading-snug">
               {item.summary}
             </p>
           )}
@@ -105,4 +104,3 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
 };
 
 export default ContentListItem;
-
