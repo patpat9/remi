@@ -82,48 +82,40 @@ const UploadSection = () => {
       dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: true } });
       const currentTimeISO = new Date().toISOString();
 
-      if (type === 'photo' && file) {
-        itemName = file.name;
-        const dataUrl = await readFileAsDataURL(file);
-        newItemDataPartial = { id, type, name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
-        aiInput = { contentType: 'photo', contentData: dataUrl, contentName: itemName };
-        thumbnail = dataUrl;
-      } else if (type === 'youtube' && youtubeUrl) {
+      if (type === 'youtube' && youtubeUrl) {
         let videoId: string | null = null;
         let playlistId: string | null = null;
         let actualVideoUrlForProcessing: string | null = null;
         itemName = 'YouTube Video'; 
         let processingShouldStop = false;
 
-        try {
-            const urlObj = new URL(youtubeUrl);
-            const vParam = urlObj.searchParams.get('v');
-            const listParam = urlObj.searchParams.get('list');
+        const urlObj = new URL(youtubeUrl);
+        videoId = urlObj.searchParams.get('v');
+        playlistId = urlObj.searchParams.get('list');
 
-            if (listParam && !vParam) {
+        if (playlistId && !videoId) {
+            toast({
+                title: "Playlist URL Detected",
+                description: "Please add individual videos from the playlist. Full playlist import is not currently supported.",
+                duration: 7000,
+            });
+            processingShouldStop = true;
+        } else if (videoId) {
+            videoId = videoId;
+            playlistId = playlistId; 
+            actualVideoUrlForProcessing = `https://www.youtube.com/watch?v=${videoId}`;
+            itemName = `YouTube Video: ${videoId}`;
+            if (playlistId) {
+                itemName = `Video (from Playlist): ${videoId}`;
                 toast({
-                    title: "Playlist URL Detected",
-                    description: "Please add individual videos from the playlist. Full playlist import is not currently supported.",
+                    title: "Playlist Context Detected",
+                    description: `Adding video '${videoId}'. Full playlist import is not supported.`,
                     duration: 7000,
                 });
-                processingShouldStop = true;
-            } else if (vParam) {
-                videoId = vParam;
-                playlistId = listParam; 
-                actualVideoUrlForProcessing = `https://www.youtube.com/watch?v=${videoId}`;
-                itemName = `YouTube Video: ${videoId}`;
-                if (playlistId) {
-                    itemName = `Video (from Playlist): ${videoId}`;
-                    toast({
-                        title: "Playlist Context Detected",
-                        description: `Adding video '${videoId}'. Full playlist import is not supported.`,
-                        duration: 7000,
-                    });
-                }
-                thumbnail = `https://img.youtube.com/vi/${videoId}/0.jpg`;
             }
-        } catch (e) {
-            // URL parsing failed
+            thumbnail = `https://img.youtube.com/vi/${videoId}/0.jpg`;
+        } else {
+            toast({ title: "Invalid YouTube URL", description: "Please provide a valid YouTube video URL (e.g., watch?v=... or youtu.be/...)", variant: "destructive", duration: 7000 });
         }
 
         if (!actualVideoUrlForProcessing && youtubeUrl.includes('youtu.be/')) {
@@ -159,6 +151,12 @@ const UploadSection = () => {
             closeDialogAndClearInput();
             return; 
         }
+      } else if (type === 'photo' && file) {
+        itemName = file.name;
+        const dataUrl = await readFileAsDataURL(file);
+        newItemDataPartial = { id, type, name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
+        aiInput = { contentType: 'photo', contentData: dataUrl, contentName: itemName };
+        thumbnail = dataUrl;
       } else if (type === 'audio' && file) {
         itemName = file.name;
         const dataUrl = await readFileAsDataURL(file);

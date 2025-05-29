@@ -30,18 +30,17 @@ const ContentDetailView = () => {
           audioRef.current.play().catch(e => console.error("Error restarting audio:", e));
         }
       } else if (mediaType === 'youtube' && youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) {
-        const youtubeOrigin = 'https://www.youtube.com';
+        const youtubeOrigin = 'https://www.youtube.com'; // Target origin for postMessage
         if (command === 'play') {
           youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', youtubeOrigin);
         } else if (command === 'pause') {
           youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', youtubeOrigin);
         } else if (command === 'restart') {
           // For restart, seek to 0 then play.
-          // Note: YouTube API might need player to be ready. This is a best-effort simple approach.
           youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[0,true]}', youtubeOrigin);
           // A small delay might be needed before play, but postMessage is async anyway.
           setTimeout(() => {
-             if (youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) {
+             if (youtubeIframeRef.current && youtubeIframeRef.current.contentWindow) { // Re-check ref
                 youtubeIframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', youtubeOrigin);
              }
           }, 100); // 100ms delay
@@ -72,11 +71,12 @@ const ContentDetailView = () => {
     
     if (!videoId) return null;
 
-    // Ensure enablejsapi=1 is present for JavaScript control
     const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
     embedUrl.searchParams.set('enablejsapi', '1');
-    // It's good practice to set the origin if you're using postMessage
-    // embedUrl.searchParams.set('origin', window.location.origin); // Might be too restrictive or cause issues. Let's try without first for simplicity.
+    // Set the origin parameter for JavaScript API control, crucial for postMessage.
+    if (typeof window !== 'undefined') {
+        embedUrl.searchParams.set('origin', window.location.origin);
+    }
     return embedUrl.toString();
   };
 

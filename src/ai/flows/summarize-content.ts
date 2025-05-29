@@ -31,7 +31,7 @@ export async function contentToText(input: SummarizeContentInput): Promise<Summa
   let summarizationInstruction: string = `Summarize the provided content.`; 
 
   if (input.contentType === 'youtube') {
-    promptParts.push({ media: { url: input.contentData } });
+    promptParts.push({ media: { url: input.contentData, contentType: 'video/mp4' } });
     summarizationInstruction = `You are an AI assistant. For the provided YouTube video, describe its content in detail. What are the main topics, key takeaways, and overall narrative or purpose of the video? This detailed description will be used by another AI to discuss the video with a user. Focus on extracting factual information and key points.`;
   } else if (input.contentType === 'text') {
     promptParts.push({ text: input.contentData }); // Pass the raw text
@@ -81,7 +81,8 @@ const summarizeContentFlowInternal = ai.defineFlow(
     let summarizationInstruction: string = `Summarize the provided content.`;
 
     if (input.contentType === 'youtube') {
-      promptParts.push({ media: { url:input.contentData } });
+      console.log('!!!video');
+      promptParts.push({ media: { url: input.contentData, contentType: 'video/mp4' } });
       summarizationInstruction = `You are an AI assistant. For the provided YouTube video, describe its content in detail. What are the main topics, key takeaways, and overall narrative or purpose of the video? This detailed description will be used by another AI to discuss the video with a user. Focus on extracting factual information and key points.`;
     } else if (input.contentType === 'text') {
       promptParts.push({ text: input.contentData });
