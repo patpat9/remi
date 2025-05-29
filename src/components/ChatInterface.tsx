@@ -136,7 +136,7 @@ const ChatInterface = () => {
   
   const onSpeechEndCallback = useCallback(() => {
     // This callback is primarily for the hook to update its 'isListening' state.
-    // Message sending is handled by mouse/key up events.
+    // Message sending is tied to mouse/key up events directly.
   }, []);
   
   const speechToTextOptions = useMemo(() => ({
@@ -162,12 +162,8 @@ const ChatInterface = () => {
 
   const handleMicMouseUp = useCallback(() => {
     if (!hasRecognitionSupport) return; 
-    // Call stopListening regardless of current isListening state from the hook,
-    // as the user action (releasing button/key) implies an attempt to stop.
     stopListening(); 
 
-    // Use a brief timeout to allow the final speech result to be processed by onSpeechResultCallback
-    // This helps ensure finalTranscriptRef.current has the latest utterance.
     setTimeout(() => {
       const messageToSend = finalTranscriptRef.current.trim();
       if (messageToSend) {
@@ -175,7 +171,7 @@ const ChatInterface = () => {
       }
       finalTranscriptRef.current = ''; 
       setInputText(''); 
-    }, 50); // Small delay, adjust if needed
+    }, 50); 
 
   }, [hasRecognitionSupport, stopListening, handleSendMessage]);
 
@@ -194,8 +190,9 @@ const ChatInterface = () => {
   }, [state.chatMessages]);
 
 
+  // Effect for global key listeners (Spacebar PTT)
   useEffect(() => {
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (
         event.key === ' ' &&
         document.activeElement?.tagName !== 'INPUT' &&
@@ -205,36 +202,41 @@ const ChatInterface = () => {
         hasRecognitionSupport
       ) {
         event.preventDefault();
-        handleMicMouseDown(); // This now calls the modified handleMicMouseDown
+        handleMicMouseDown(); 
         spacebarIsControllingPttRef.current = true;
       }
     };
 
-    const handleGlobalKeyUp = (event: KeyboardEvent) => {
+    const handleKeyUp = (event: KeyboardEvent) => {
       if (
         event.key === ' ' &&
         spacebarIsControllingPttRef.current &&
         hasRecognitionSupport 
       ) {
         event.preventDefault();
-        handleMicMouseUp(); // This now calls the modified handleMicMouseUp
+        handleMicMouseUp(); 
         spacebarIsControllingPttRef.current = false;
       }
     };
 
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    window.addEventListener('keyup', handleGlobalKeyUp);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
 
     return () => {
-      window.removeEventListener('keydown', handleGlobalKeyDown);
-      window.removeEventListener('keyup', handleGlobalKeyUp);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isListening, state.isChatLoading, hasRecognitionSupport, handleMicMouseDown, handleMicMouseUp]);
+
+  // Effect for cleanup on unmount if spacebar PTT was active
+  useEffect(() => {
+    return () => {
       if (spacebarIsControllingPttRef.current) {
-        // If component unmounts or effect re-runs while spacebar was held
-        stopListening(); // Ensure recognition is stopped
+        stopListening(); 
         spacebarIsControllingPttRef.current = false;
       }
     };
-  }, [isListening, state.isChatLoading, hasRecognitionSupport, handleMicMouseDown, handleMicMouseUp, stopListening]);
+  }, [stopListening]); // stopListening is stable if its dependencies in useSpeechToText are stable.
 
 
   return (
@@ -261,12 +263,12 @@ const ChatInterface = () => {
             type="button" 
             variant="outline" 
             size="icon" 
-            onMouseDown={handleMicMouseDown}
-            onMouseUp={handleMicMouseUp}
-            onTouchStart={(e) => { e.preventDefault(); handleMicMouseDown(); }}
-            onTouchEnd={(e) => { e.preventDefault(); handleMicMouseUp(); }}     
+            onMouseDown={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseDown(); }}
+            onMouseUp={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseUp(); }}
+            onTouchStart={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseDown(); }}
+            onTouchEnd={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseUp(); }}     
             disabled={state.isChatLoading}
-            className={isListening ? "bg-accent text-accent-foreground" : ""}
+            className={isListening && !spacebarIsControllingPttRef.current ? "bg-accent text-accent-foreground" : ""}
             aria-label="Record voice message (or hold Spacebar)"
           >
             <Mic className={isListening ? "text-destructive animate-pulse" : ""} />
@@ -290,3 +292,5 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
+
+    
