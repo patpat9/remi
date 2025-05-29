@@ -112,7 +112,7 @@ const ContentDetailView = () => {
 
     const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
     embedUrl.searchParams.set('enablejsapi', '1');
-    embedUrl.searchParams.set('autoplay', '0'); // Keep autoplay=0 by default, controlled by JS
+    embedUrl.searchParams.set('autoplay', '1'); 
     if (typeof window !== 'undefined') {
         embedUrl.searchParams.set('origin', window.location.origin);
     }
@@ -180,9 +180,11 @@ const ContentDetailView = () => {
               </div>
             )}
             {selectedContent.summary ? (
-              <p className="text-sm text-foreground bg-muted/50 p-3 rounded-md whitespace-pre-wrap">
-                {selectedContent.summary}
-              </p>
+              <ScrollArea className="max-h-28 rounded-md bg-muted/50"> {/* max-h-28 is 7rem */}
+                <p className="text-sm text-foreground p-3 whitespace-pre-wrap">
+                  {selectedContent.summary}
+                </p>
+              </ScrollArea>
             ) : !isLoadingSummary && (
               <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">No summary available or still generating.</p>
             )}
