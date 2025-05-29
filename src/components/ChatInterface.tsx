@@ -142,7 +142,6 @@ const ChatInterface = () => {
         finalTranscriptRef.current = fullFinalTranscript;
     } else if (event.results.length > 0 && event.results[event.results.length-1].isFinal === false && !finalTranscriptRef.current && !currentInterimTranscript) {
         // If only interim results and no final results yet, but speech has started, clear ref in case of stutter start.
-        // This is less likely with continuous mode but covers edge cases.
         finalTranscriptRef.current = '';
     }
     
@@ -180,6 +179,9 @@ const ChatInterface = () => {
   } = useSpeechToText(speechToTextOptions);
 
   const handleMicMouseDown = useCallback(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); // Stop any ongoing TTS
+    }
     if (state.isChatLoading || !hasRecognitionSupport || isListening) return;
     finalTranscriptRef.current = ''; 
     setInputText(''); 
@@ -258,6 +260,7 @@ const ChatInterface = () => {
   }, [isListening, state.isChatLoading, hasRecognitionSupport, handleMicMouseDown, handleMicMouseUp]);
 
   useEffect(() => {
+    // Cleanup effect for spacebar PTT if component unmounts
     return () => {
       if (spacebarIsControllingPttRef.current) {
         stopListening(); 
@@ -296,10 +299,10 @@ const ChatInterface = () => {
             onTouchStart={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseDown(); }}
             onTouchEnd={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseUp(); }}     
             disabled={state.isChatLoading}
-            className={isListening && !spacebarIsControllingPttRef.current ? "bg-accent text-accent-foreground" : ""}
+            className={(isListening && !spacebarIsControllingPttRef.current) ? "bg-accent text-accent-foreground" : ""}
             aria-label="Record voice message (or hold Spacebar)"
           >
-            <Mic className={isListening ? "text-destructive animate-pulse" : ""} />
+            <Mic className={(isListening && !spacebarIsControllingPttRef.current) ? "text-destructive animate-pulse" : ""} />
           </Button>
           )}
           <Input
