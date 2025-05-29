@@ -22,12 +22,9 @@ const ChatInterface = () => {
 
   const speakText = (text: string) => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel(); // Stop any currently speaking utterances
+      window.speechSynthesis.cancel(); 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.5; // Set speech rate to 1.5x
-      // You can configure voice, rate, pitch etc. here if needed
-      // e.g., const voices = window.speechSynthesis.getVoices();
-      // utterance.voice = voices.find(voice => voice.name === 'Google UK English Female'); // Example
+      utterance.rate = 1.5; 
       utterance.lang = 'en-US';
       window.speechSynthesis.speak(utterance);
     } else {
@@ -94,7 +91,7 @@ const ChatInterface = () => {
         timestamp: new Date(),
       };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: aiMessage });
-      speakText(aiResponseText); // Speak the AI's response
+      speakText(aiResponseText); 
 
       if (result.selectedContentIdByAi) {
         dispatch({ type: 'SELECT_CONTENT', payload: result.selectedContentIdByAi });
@@ -119,31 +116,43 @@ const ChatInterface = () => {
         timestamp: new Date(),
       };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: errorMessage });
-      speakText("Sorry, I encountered an error. Please try again."); // Speak error message too
+      speakText("Sorry, I encountered an error. Please try again."); 
     } finally {
       dispatch({ type: 'SET_CHAT_LOADING', payload: false });
     }
   }, [dispatch, state.contentItems, state.selectedContentId, state.isChatLoading, toast, inputText]);
 
   const onSpeechResultCallback = useCallback((event: SpeechRecognitionEvent) => {
-    let interimTranscript = '';
-    let finalTranscriptUpdateForThisEvent = '';
+    let fullFinalTranscript = ""; 
+    let currentInterimTranscript = "";
 
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-      const transcriptSegment = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        finalTranscriptUpdateForThisEvent += transcriptSegment;
-      } else {
-        interimTranscript += transcriptSegment;
-      }
+    // Iterate through all results in the event to reconstruct the full final transcript
+    for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+            fullFinalTranscript += result[0].transcript + " "; // Add space for concatenation
+        } else {
+            currentInterimTranscript += result[0].transcript;
+        }
     }
+    fullFinalTranscript = fullFinalTranscript.trim(); // Trim trailing space
 
-    if (finalTranscriptUpdateForThisEvent) {
-      finalTranscriptRef.current += (finalTranscriptRef.current.length > 0 && finalTranscriptUpdateForThisEvent.length > 0 && !finalTranscriptRef.current.endsWith(' ') && !finalTranscriptUpdateForThisEvent.startsWith(' ') ? ' ' : '') + finalTranscriptUpdateForThisEvent;
+    // If there's any final transcript content from this event or previous, update the ref
+    if (fullFinalTranscript) {
+        finalTranscriptRef.current = fullFinalTranscript;
+    } else if (event.results.length > 0 && event.results[event.results.length-1].isFinal === false && !finalTranscriptRef.current && !currentInterimTranscript) {
+        // If only interim results and no final results yet, but speech has started, clear ref in case of stutter start.
+        // This is less likely with continuous mode but covers edge cases.
+        finalTranscriptRef.current = '';
     }
     
-    setInputText(finalTranscriptRef.current + (interimTranscript ? (finalTranscriptRef.current.length > 0 && !finalTranscriptRef.current.endsWith(' ') && !interimTranscript.startsWith(' ') ? ' ' : '') + interimTranscript : ''));
+    // For display, use the latest full final transcript and append the current interim part.
+    // If finalTranscriptRef is empty, it means no final parts yet, so just show interim.
+    const displayTranscript = (finalTranscriptRef.current ? finalTranscriptRef.current + " " : "") + currentInterimTranscript.trim();
+    setInputText(displayTranscript.trim());
+
   }, []);
+
 
   const handleSpeechError = useCallback((event: SpeechRecognitionError) => {
     toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
@@ -153,6 +162,7 @@ const ChatInterface = () => {
   
   const onSpeechEndCallback = useCallback(() => {
     // This callback is primarily for the hook to update its 'isListening' state.
+    // The actual sending of message on button release is handled in handleMicMouseUp.
   }, []);
   
   const speechToTextOptions = useMemo(() => ({
@@ -179,9 +189,9 @@ const ChatInterface = () => {
   const handleMicMouseUp = useCallback(() => {
     if (!hasRecognitionSupport) return; 
     
-    // Slightly delay processing to catch final speech results
+    stopListening(); 
+
     setTimeout(() => {
-      stopListening(); 
       const messageToSend = finalTranscriptRef.current.trim();
       if (messageToSend) {
         handleSendMessage(messageToSend);
@@ -204,13 +214,12 @@ const ChatInterface = () => {
     if (div) {
       const timer = setTimeout(() => {
         div.scrollTop = div.scrollHeight;
-      }, 0);
+      }, 50); // Slightly increased delay for scroll
       return () => clearTimeout(timer);
     }
   }, [state.chatMessages]);
 
 
-  // Effect for global key listeners (Spacebar PTT)
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
       if (
@@ -248,7 +257,6 @@ const ChatInterface = () => {
     };
   }, [isListening, state.isChatLoading, hasRecognitionSupport, handleMicMouseDown, handleMicMouseUp]);
 
-  // Effect for cleanup on unmount if spacebar PTT was active
   useEffect(() => {
     return () => {
       if (spacebarIsControllingPttRef.current) {
