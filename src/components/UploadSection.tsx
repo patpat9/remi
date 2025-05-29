@@ -89,23 +89,40 @@ const UploadSection = () => {
         itemName = 'YouTube Video'; 
         let processingShouldStop = false;
 
-        const urlObj = new URL(youtubeUrl);
-        videoId = urlObj.searchParams.get('v');
-        playlistId = urlObj.searchParams.get('list');
+        const closeDialogAndClearInput = () => {
+            handleOpenChange('youtube', false);
+            setYoutubeUrl('');
+        };
+        
+        try {
+            const urlObj = new URL(youtubeUrl);
+            videoId = urlObj.searchParams.get('v');
+            playlistId = urlObj.searchParams.get('list');
+        } catch (e) {
+            toast({ title: "Invalid YouTube URL", description: "The provided URL is not valid.", variant: "destructive", duration: 7000 });
+            processingShouldStop = true;
+        }
 
-        if (playlistId && !videoId) {
+
+        if (playlistId && !videoId && !processingShouldStop) { // Pure playlist URL
             toast({
                 title: "Playlist URL Detected",
                 description: "Please add individual videos from the playlist. Full playlist import is not currently supported.",
                 duration: 7000,
             });
             processingShouldStop = true;
-        } else if (videoId) {
-            videoId = videoId;
-            playlistId = playlistId; 
+        }
+        
+        if (processingShouldStop) {
+            dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
+            closeDialogAndClearInput();
+            return;
+        }
+
+        if (videoId) { // Video ID is present
             actualVideoUrlForProcessing = `https://www.youtube.com/watch?v=${videoId}`;
             itemName = `YouTube Video: ${videoId}`;
-            if (playlistId) {
+            if (playlistId) { // Video is part of a playlist
                 itemName = `Video (from Playlist): ${videoId}`;
                 toast({
                     title: "Playlist Context Detected",
@@ -114,11 +131,7 @@ const UploadSection = () => {
                 });
             }
             thumbnail = `https://img.youtube.com/vi/${videoId}/0.jpg`;
-        } else {
-            toast({ title: "Invalid YouTube URL", description: "Please provide a valid YouTube video URL (e.g., watch?v=... or youtu.be/...)", variant: "destructive", duration: 7000 });
-        }
-
-        if (!actualVideoUrlForProcessing && youtubeUrl.includes('youtu.be/')) {
+        } else if (youtubeUrl.includes('youtu.be/')) { // Short URL like youtu.be/VIDEO_ID
             const shortVideoIdMatch = youtubeUrl.match(/youtu\.be\/([\w-]+)/);
             const shortVideoId = shortVideoIdMatch ? shortVideoIdMatch[1] : null;
             if (shortVideoId) {
@@ -129,23 +142,16 @@ const UploadSection = () => {
             }
         }
         
-        const closeDialogAndClearInput = () => {
-            handleOpenChange('youtube', false);
-            setYoutubeUrl('');
-        };
-
-        if (processingShouldStop) {
-            dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
-            closeDialogAndClearInput();
-            return;
-        }
-
         if (actualVideoUrlForProcessing && videoId) {
             newItemDataPartial = { id, type, name: itemName, data: actualVideoUrlForProcessing, originalData: actualVideoUrlForProcessing, createdAt: currentTimeISO };
             aiInput = { contentType: 'youtube', contentData: actualVideoUrlForProcessing, contentName: itemName };
+            // Moved dialog closing here for YouTube success case, happens before async summary
+            handleOpenChange('youtube', false);
+            setYoutubeUrl('');
         } else {
-             if (!(playlistId && !videoId)) { 
-                toast({ title: "Invalid YouTube URL", description: "Please provide a valid YouTube video URL (e.g., watch?v=... or youtu.be/...)", variant: "destructive", duration: 7000 });
+            // This case should only be hit if URL is invalid and not caught by earlier playlist/short URL checks
+            if (!(playlistId && !videoId)) { // Avoid double toast if it's a pure playlist case
+                 toast({ title: "Invalid YouTube URL", description: "Please provide a valid YouTube video URL (e.g., watch?v=... or youtu.be/...)", variant: "destructive", duration: 7000 });
             }
             dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
             closeDialogAndClearInput();
@@ -192,10 +198,6 @@ const UploadSection = () => {
           dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
           toast({ title: "Content Added", description: `${itemName} added.` });
         }
-        if (type === 'youtube') { 
-            handleOpenChange('youtube', false);
-            setYoutubeUrl('');
-        }
       } else {
          if (!file && type !== 'youtube') { 
             dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
@@ -205,7 +207,7 @@ const UploadSection = () => {
       console.error(`Error processing ${itemName} (ID: ${id}):`, error);
       toast({ title: "Upload Error", description: error.message || `Could not process ${itemName || 'content'} or generate summary.`, variant: "destructive" });
       dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
-      if (type === 'youtube') { 
+      if (type === 'youtube') { // Fallback close for YouTube dialog on unhandled error
         handleOpenChange('youtube', false);
         setYoutubeUrl('');
       }
@@ -221,8 +223,6 @@ const UploadSection = () => {
       try {
         await Promise.all(uploadPromises);
       } catch (error) {
-        // Individual errors are caught inside performUploadProcessing and shown as toasts.
-        // This catch is for any unexpected errors from Promise.all itself.
         console.error("Error during parallel file processing setup:", error);
         toast({ title: "Processing Error", description: "An unexpected error occurred while processing multiple files.", variant: "destructive"});
       }
