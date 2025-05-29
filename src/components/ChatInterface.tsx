@@ -17,7 +17,8 @@ const ChatInterface = () => {
   const [inputText, setInputText] = useState('');
   const { toast } = useToast();
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const finalTranscriptRef = useRef<string>(''); // Accumulates final transcript for the current speech session
+  const finalTranscriptRef = useRef<string>('');
+  const spacebarIsControllingPttRef = useRef(false);
 
   const handleSendMessage = useCallback(async (textOverride?: string) => {
     const messageText = (textOverride || inputText).trim();
@@ -31,11 +32,9 @@ const ChatInterface = () => {
     };
     dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMessage });
     
-    // Clear input text only if it was a typed message, or if speech override is handled separately
     if (!textOverride) { 
         setInputText('');
     }
-    // For speech, inputText will be cleared by handleMicMouseUp
 
     dispatch({ type: 'SET_CHAT_LOADING', payload: true });
 
@@ -109,10 +108,9 @@ const ChatInterface = () => {
     }
   }, [dispatch, state.contentItems, state.selectedContentId, state.isChatLoading, toast, inputText]);
 
-
   const onSpeechResultCallback = useCallback((event: SpeechRecognitionEvent) => {
     let interimTranscript = '';
-    let finalTranscriptUpdateForThisEvent = ''; // Accumulates final parts from *this* event
+    let finalTranscriptUpdateForThisEvent = '';
 
     for (let i = event.resultIndex; i < event.results.length; ++i) {
       const transcriptSegment = event.results[i][0].transcript;
@@ -124,27 +122,20 @@ const ChatInterface = () => {
     }
 
     if (finalTranscriptUpdateForThisEvent) {
-      // Append the newly finalized part to the ref. Add a space if ref already has content.
       finalTranscriptRef.current += (finalTranscriptRef.current.length > 0 && finalTranscriptUpdateForThisEvent.length > 0 ? ' ' : '') + finalTranscriptUpdateForThisEvent;
     }
     
-    // For display, show all accumulated finalized content from ref + current interim transcript
     setInputText(finalTranscriptRef.current + (interimTranscript ? (finalTranscriptRef.current.length > 0 ? ' ' : '') + interimTranscript : ''));
-  }, []); // finalTranscriptRef is a ref, setInputText is stable
+  }, []);
 
   const handleSpeechError = useCallback((event: SpeechRecognitionError) => {
     toast({ title: "Voice Input Error", description: event.error || "Could not process voice input.", variant: "destructive" });
     finalTranscriptRef.current = ''; 
     setInputText('');
   }, [toast]);
-
+  
   const onSpeechEndCallback = useCallback(() => {
-    // This callback is triggered when speech recognition stops (either by stopListening() or by a natural pause if continuous=false).
-    // Message sending is now handled by handleMicMouseUp.
-    // We don't send the message here to ensure it only sends on button release.
-    // Any necessary cleanup that isn't tied to sending the message can go here.
-    // For example, if recognition stops due to an error and handleMicMouseUp wasn't called,
-    // finalTranscriptRef might still hold data, but it won't be sent unless the button is released.
+    // Minimal callback, message sending is handled by mouse/key up events
   }, []);
   
   const speechToTextOptions = useMemo(() => ({
@@ -161,6 +152,25 @@ const ChatInterface = () => {
     hasRecognitionSupport,
   } = useSpeechToText(speechToTextOptions);
 
+  const handleMicMouseDown = useCallback(() => {
+    if (state.isChatLoading || !hasRecognitionSupport || isListening) return;
+    finalTranscriptRef.current = ''; 
+    setInputText(''); 
+    startListening();
+  }, [state.isChatLoading, hasRecognitionSupport, startListening, isListening]);
+
+  const handleMicMouseUp = useCallback(() => {
+    if (!hasRecognitionSupport || !isListening) return; // Only act if currently listening
+    stopListening(); 
+
+    const messageToSend = finalTranscriptRef.current.trim();
+    if (messageToSend) {
+      handleSendMessage(messageToSend);
+    }
+    finalTranscriptRef.current = ''; 
+    setInputText(''); 
+  }, [hasRecognitionSupport, stopListening, handleSendMessage, isListening]);
+
   useEffect(() => {
     if (speechError) {
       toast({ title: "Voice Recognition Error", description: speechError, variant: "destructive" });
@@ -170,33 +180,57 @@ const ChatInterface = () => {
   useEffect(() => {
     if (chatContainerRef.current) {
       const element = chatContainerRef.current;
-      // Defer scroll to allow DOM updates and Radix components to settle
-      const scrollId = setTimeout(() => {
+      setTimeout(() => {
         element.scrollTop = element.scrollHeight;
       }, 0);
-      return () => clearTimeout(scrollId);
     }
   }, [state.chatMessages]);
 
+  useEffect(() => {
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key === ' ' &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA' &&
+        !isListening && 
+        !state.isChatLoading && 
+        hasRecognitionSupport
+      ) {
+        event.preventDefault();
+        handleMicMouseDown();
+        spacebarIsControllingPttRef.current = true;
+      }
+    };
 
-  const handleMicMouseDown = () => {
-    if (state.isChatLoading || !hasRecognitionSupport) return;
-    finalTranscriptRef.current = ''; // Reset accumulated transcript
-    setInputText(''); // Clear visual input
-    startListening();
-  };
+    const handleGlobalKeyUp = (event: KeyboardEvent) => {
+      if (
+        event.key === ' ' &&
+        spacebarIsControllingPttRef.current &&
+        hasRecognitionSupport 
+      ) {
+        event.preventDefault();
+        // handleMicMouseUp will only act if isListening is true, which it should be
+        handleMicMouseUp(); 
+        spacebarIsControllingPttRef.current = false;
+      }
+    };
 
-  const handleMicMouseUp = () => {
-    if (!hasRecognitionSupport) return;
-    stopListening(); // This will trigger onSpeechEnd eventually
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('keyup', handleGlobalKeyUp);
 
-    const messageToSend = finalTranscriptRef.current.trim();
-    if (messageToSend) {
-      handleSendMessage(messageToSend);
-    }
-    finalTranscriptRef.current = ''; // Clear ref after sending or if empty
-    setInputText(''); // Clear visual input
-  };
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('keyup', handleGlobalKeyUp);
+      if (spacebarIsControllingPttRef.current) {
+        // If component unmounts while spacebar was held for PTT
+        if (isListening) { // Check isListening before calling stopListening
+          stopListening();
+        }
+        spacebarIsControllingPttRef.current = false;
+      }
+    };
+  }, [isListening, state.isChatLoading, hasRecognitionSupport, handleMicMouseDown, handleMicMouseUp, stopListening]);
+
 
   return (
     <div className="h-full flex flex-col bg-card shadow-sm rounded-t-lg overflow-hidden border-t border-border">
@@ -210,6 +244,7 @@ const ChatInterface = () => {
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
             Chat with Remi about your uploaded content, or ask anything else!
+            {hasRecognitionSupport && <p className="text-xs mt-1">(Try holding Spacebar to talk)</p>}
           </div>
         )}
         {state.chatMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)}
@@ -223,21 +258,21 @@ const ChatInterface = () => {
             size="icon" 
             onMouseDown={handleMicMouseDown}
             onMouseUp={handleMicMouseUp}
-            onTouchStart={(e) => { e.preventDefault(); handleMicMouseDown(); }} // Prevent default for touch to avoid issues
-            onTouchEnd={(e) => { e.preventDefault(); handleMicMouseUp(); }}     // Prevent default for touch
+            onTouchStart={(e) => { e.preventDefault(); handleMicMouseDown(); }}
+            onTouchEnd={(e) => { e.preventDefault(); handleMicMouseUp(); }}     
             disabled={state.isChatLoading}
             className={isListening ? "bg-accent text-accent-foreground" : ""}
-            aria-label="Record voice message"
+            aria-label="Record voice message (or hold Spacebar)"
           >
             <Mic className={isListening ? "text-destructive animate-pulse" : ""} />
           </Button>
           )}
           <Input
             type="text"
-            placeholder={isListening ? "Listening..." : "Type your message..."}
+            placeholder={isListening ? "Listening..." : "Type or hold Space to talk..."}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            disabled={state.isChatLoading || isListening}
+            disabled={state.isChatLoading || (isListening && !spacebarIsControllingPttRef.current)} // Allow typing if listening via spacebar but then decide to type
             className="flex-1"
           />
           <Button type="submit" size="icon" disabled={state.isChatLoading || (!inputText.trim() && !isListening)}>
@@ -250,3 +285,5 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
+
+    
