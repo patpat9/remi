@@ -25,7 +25,7 @@ const useSpeechToText = (options?: SpeechToTextOptions) => {
     }
 
     const recogInstance = new SpeechRecognitionAPI();
-    recogInstance.continuous = false; // Important for push-to-talk: get result on pause/stop
+    recogInstance.continuous = true; // Allow continuous listening through pauses
     recogInstance.interimResults = true;
     recogInstance.lang = 'en-US';
 
