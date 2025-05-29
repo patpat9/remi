@@ -43,29 +43,39 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
   return (
     <Card
       className={cn(
-        "cursor-pointer transition-all duration-200 ease-in-out hover:shadow-md",
+        "relative cursor-pointer transition-all duration-200 ease-in-out hover:shadow-md", // Added relative
         isSelected ? "border-primary ring-2 ring-primary shadow-lg" : "border-border"
       )}
       onClick={() => dispatch({ type: 'SELECT_CONTENT', payload: item.id })}
       aria-current={isSelected ? "page" : undefined}
     >
-      <CardHeader className="p-2 flex justify-between items-start">
-        <div className="flex items-start space-x-2 flex-1 min-w-0">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute top-1 right-1 z-10 h-7 w-7 text-muted-foreground hover:text-destructive"
+        onClick={handleDelete}
+        aria-label={`Delete ${item.name}`}
+      >
+        <Trash2 size={16} />
+      </Button>
+
+      <CardHeader className="p-2"> {/* Standard padding for header */}
+        <div className="flex items-start space-x-2">
           {item.thumbnail ? (
             <Image 
               src={item.thumbnail} 
               alt={item.name} 
-              width={48} 
-              height={48} 
-              className="rounded-md object-cover h-12 w-12 aspect-square" 
+              width={40} // Reduced size
+              height={40} // Reduced size
+              className="rounded-md object-cover h-10 w-10 aspect-square" // Reduced size
               data-ai-hint={item.type === 'photo' ? 'item preview' : `${item.type} content`}
             />
           ) : (
-            <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center shrink-0">
+            <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center shrink-0"> {/* Reduced size */}
               <ContentListItemIcon type={item.type} />
             </div>
           )}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 pr-6"> {/* Added pr-6 to prevent overlap with absolute button */}
             <CardTitle className="text-sm font-semibold truncate leading-tight" title={item.name}>
               {item.name}
             </CardTitle>
@@ -74,26 +84,18 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
             </CardDescription>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0 ml-1"
-          onClick={handleDelete}
-          aria-label={`Delete ${item.name}`}
-        >
-          <Trash2 size={16} />
-        </Button>
       </CardHeader>
+
       {(item.summary || isLoadingSummary) && (
         <CardContent className="px-2 pb-2 pt-0">
            {isLoadingSummary && !item.summary && (
-            <div className="flex items-center text-xs text-muted-foreground">
+            <div className="flex items-center text-xs text-muted-foreground pr-6"> {/* Added pr-6 */}
               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               Generating summary...
             </div>
           )}
           {item.summary && (
-            <p className="text-xs text-muted-foreground line-clamp-2 leading-snug">
+            <p className="text-xs text-muted-foreground line-clamp-2 leading-snug pr-6"> {/* Added pr-6 */}
               {item.summary}
             </p>
           )}
