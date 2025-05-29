@@ -1,18 +1,25 @@
 
 "use client";
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAppContext } from './AppProvider';
-import { Loader2, InfoIcon } from 'lucide-react';
+import { Loader2, InfoIcon, Edit3, Save, XCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
 
 const ContentDetailView = () => {
   const { state, dispatch } = useAppContext();
   const selectedContent = state.contentItems.find(item => item.id === state.selectedContentId);
   const isLoadingSummary = selectedContent && state.isSummaryLoading[selectedContent.id];
   const isDuckingActive = state.activeDuckingReasons.size > 0;
+  const { toast } = useToast();
+
+  const [isEditingSummary, setIsEditingSummary] = useState(false);
+  const [editableSummaryText, setEditableSummaryText] = useState('');
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
@@ -81,14 +88,13 @@ const ContentDetailView = () => {
   }, [state.pendingMediaCommand, selectedContent, dispatch, state.contentItems]);
 
 
-  // Effect for audio ducking
   useEffect(() => {
     const audioEl = audioRef.current;
     const youtubeWin = youtubeIframeRef.current?.contentWindow;
     const youtubeOrigin = 'https://www.youtube.com';
 
     if (!selectedContent || (selectedContent.type !== 'audio' && selectedContent.type !== 'youtube')) {
-      return; // Only apply to playable selected content
+      return;
     }
 
     if (selectedContent.type === 'audio' && audioEl) {
@@ -97,7 +103,15 @@ const ContentDetailView = () => {
       const targetVolume = isDuckingActive ? 20 : 100;
       youtubeWin.postMessage(`{"event":"command","func":"setVolume","args":[${targetVolume}]}`, youtubeOrigin);
     }
-  }, [isDuckingActive, selectedContent?.id, selectedContent?.type]); // Re-run if ducking state or selected content changes
+  }, [isDuckingActive, selectedContent?.id, selectedContent?.type]);
+
+  // Reset edit mode if selected content changes
+  useEffect(() => {
+    setIsEditingSummary(false);
+    if (selectedContent) {
+      setEditableSummaryText(selectedContent.summary || '');
+    }
+  }, [selectedContent?.id, selectedContent?.summary]);
 
 
   const getYouTubeEmbedUrl = (url: string) => {
@@ -117,6 +131,31 @@ const ContentDetailView = () => {
         embedUrl.searchParams.set('origin', window.location.origin);
     }
     return embedUrl.toString();
+  };
+
+  const handleEditSummary = () => {
+    if (selectedContent) {
+      setEditableSummaryText(selectedContent.summary || '');
+      setIsEditingSummary(true);
+    }
+  };
+
+  const handleSaveSummary = () => {
+    if (selectedContent) {
+      dispatch({
+        type: 'UPDATE_CONTENT_SUMMARY',
+        payload: { id: selectedContent.id, summary: editableSummaryText },
+      });
+      setIsEditingSummary(false);
+      toast({ title: "Summary Updated", description: "The summary has been saved." });
+    }
+  };
+
+  const handleCancelEditSummary = () => {
+    setIsEditingSummary(false);
+    if (selectedContent) {
+      setEditableSummaryText(selectedContent.summary || ''); // Reset to original
+    }
   };
 
   if (!selectedContent) {
@@ -172,21 +211,53 @@ const ContentDetailView = () => {
           </div>
 
           <div>
-            <h3 className="text-md font-semibold mb-1 text-primary">Summary</h3>
-            {isLoadingSummary && !selectedContent.summary && (
-              <div className="flex items-center text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating summary...
+            <div className="flex justify-between items-center mb-1">
+              <h3 className="text-md font-semibold text-primary">Summary</h3>
+              {!isEditingSummary && selectedContent.type !== 'text' && ( // Don't allow editing summary of raw text content
+                <Button variant="ghost" size="sm" onClick={handleEditSummary} className="px-2 py-1 h-auto">
+                  <Edit3 className="mr-1 h-4 w-4" /> Edit
+                </Button>
+              )}
+            </div>
+
+            {isEditingSummary ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={editableSummaryText}
+                  onChange={(e) => setEditableSummaryText(e.target.value)}
+                  placeholder="Enter summary..."
+                  className="min-h-[80px] text-sm"
+                />
+                <div className="flex justify-end space-x-2">
+                  <Button variant="outline" size="sm" onClick={handleCancelEditSummary}>
+                    <XCircle className="mr-1 h-4 w-4" /> Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleSaveSummary}>
+                    <Save className="mr-1 h-4 w-4" /> Save
+                  </Button>
+                </div>
               </div>
-            )}
-            {selectedContent.summary ? (
-              <ScrollArea className="h-28 rounded-md bg-muted/50"> {/* Use fixed height */}
-                <p className="text-sm text-foreground whitespace-pre-wrap break-words p-3"> {/* Add padding directly to the p tag */}
-                  {selectedContent.summary}
-                </p>
-              </ScrollArea>
-            ) : !isLoadingSummary && (
-              <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">No summary available or still generating.</p>
+            ) : (
+              <>
+                {isLoadingSummary && !selectedContent.summary && (
+                  <div className="flex items-center text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating summary...
+                  </div>
+                )}
+                {selectedContent.summary || (!isLoadingSummary && selectedContent.type === 'text' && !selectedContent.summary) ? ( // Also show for text if no summary yet
+                  <ScrollArea className="h-28 rounded-md bg-muted/50">
+                    <p className="text-sm text-foreground whitespace-pre-wrap break-words p-3">
+                      {selectedContent.summary}
+                      {selectedContent.type === 'text' && !selectedContent.summary && (
+                        <span className="italic text-muted-foreground">Raw text content shown above. AI summary can be generated via chat if needed.</span>
+                      )}
+                    </p>
+                  </ScrollArea>
+                ) : !isLoadingSummary && (
+                  <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">No summary available or still generating.</p>
+                )}
+              </>
             )}
           </div>
         </CardContent>
