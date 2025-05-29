@@ -20,6 +20,20 @@ const ChatInterface = () => {
   const finalTranscriptRef = useRef<string>('');
   const spacebarIsControllingPttRef = useRef(false);
 
+  const speakText = (text: string) => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); // Stop any currently speaking utterances
+      const utterance = new SpeechSynthesisUtterance(text);
+      // You can configure voice, rate, pitch etc. here if needed
+      // e.g., const voices = window.speechSynthesis.getVoices();
+      // utterance.voice = voices.find(voice => voice.name === 'Google UK English Female'); // Example
+      utterance.lang = 'en-US';
+      window.speechSynthesis.speak(utterance);
+    } else {
+      console.warn("Browser does not support Speech Synthesis.");
+    }
+  };
+
   const handleSendMessage = useCallback(async (textOverride?: string) => {
     const messageText = (textOverride || inputText).trim();
     if (!messageText && !state.isChatLoading) return;
@@ -79,6 +93,7 @@ const ChatInterface = () => {
         timestamp: new Date(),
       };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: aiMessage });
+      speakText(aiResponseText); // Speak the AI's response
 
       if (result.selectedContentIdByAi) {
         dispatch({ type: 'SELECT_CONTENT', payload: result.selectedContentIdByAi });
@@ -103,6 +118,7 @@ const ChatInterface = () => {
         timestamp: new Date(),
       };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: errorMessage });
+      speakText("Sorry, I encountered an error. Please try again."); // Speak error message too
     } finally {
       dispatch({ type: 'SET_CHAT_LOADING', payload: false });
     }
@@ -136,7 +152,6 @@ const ChatInterface = () => {
   
   const onSpeechEndCallback = useCallback(() => {
     // This callback is primarily for the hook to update its 'isListening' state.
-    // Message sending is tied to mouse/key up events directly.
   }, []);
   
   const speechToTextOptions = useMemo(() => ({
@@ -164,6 +179,7 @@ const ChatInterface = () => {
     if (!hasRecognitionSupport) return; 
     stopListening(); 
 
+    // Short delay to allow final speech recognition results to process
     setTimeout(() => {
       const messageToSend = finalTranscriptRef.current.trim();
       if (messageToSend) {
@@ -185,14 +201,18 @@ const ChatInterface = () => {
   useEffect(() => {
     const div = chatContainerRef.current;
     if (div) {
-      div.scrollTop = div.scrollHeight;
+      // Using a short timeout to ensure DOM updates (new message) are flushed before scrolling
+      const timer = setTimeout(() => {
+        div.scrollTop = div.scrollHeight;
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [state.chatMessages]);
 
 
   // Effect for global key listeners (Spacebar PTT)
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
       if (
         event.key === ' ' &&
         document.activeElement?.tagName !== 'INPUT' &&
@@ -207,10 +227,10 @@ const ChatInterface = () => {
       }
     };
 
-    const handleKeyUp = (event: KeyboardEvent) => {
+    const handleGlobalKeyUp = (event: KeyboardEvent) => {
       if (
         event.key === ' ' &&
-        spacebarIsControllingPttRef.current &&
+        spacebarIsControllingPttRef.current && // Check if spacebar initiated this PTT
         hasRecognitionSupport 
       ) {
         event.preventDefault();
@@ -219,18 +239,19 @@ const ChatInterface = () => {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('keyup', handleGlobalKeyUp);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('keyup', handleGlobalKeyUp);
     };
   }, [isListening, state.isChatLoading, hasRecognitionSupport, handleMicMouseDown, handleMicMouseUp]);
 
   // Effect for cleanup on unmount if spacebar PTT was active
   useEffect(() => {
     return () => {
+      // This cleanup runs if the component unmounts OR if dependencies change causing re-run
       if (spacebarIsControllingPttRef.current) {
         stopListening(); 
         spacebarIsControllingPttRef.current = false;
@@ -292,5 +313,4 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
-
     
