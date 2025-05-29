@@ -75,9 +75,8 @@ const ContentListItem = ({ item }: ContentListItemProps) => {
               <ContentListItemIcon type={item.type} />
             </div>
           )}
-          {/* Added overflow-hidden to this div */}
           <div className="flex-1 min-w-0 pr-8 overflow-hidden"> 
-            <CardTitle className="text-sm font-semibold truncate leading-tight" title={item.name}>
+            <CardTitle className="text-sm font-semibold leading-tight line-clamp-2 break-words" title={item.name}>
               {item.name}
             </CardTitle>
             <CardDescription className="text-xs text-muted-foreground leading-tight pt-0.5">
