@@ -4,14 +4,14 @@
 import { useState, useEffect, useCallback } from 'react';
 
 interface SpeechToTextOptions {
-  onResult?: (event: SpeechRecognitionEvent) => void; // Changed to pass the full event
+  onResult?: (event: SpeechRecognitionEvent) => void;
   onError?: (error: SpeechRecognitionError) => void;
   onEnd?: () => void;
 }
 
 const useSpeechToText = (options?: SpeechToTextOptions) => {
   const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState(''); // Internal transcript state
+  const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
 
@@ -25,9 +25,13 @@ const useSpeechToText = (options?: SpeechToTextOptions) => {
     }
 
     const recogInstance = new SpeechRecognitionAPI();
-    recogInstance.continuous = true; // Allow continuous listening through pauses
+    recogInstance.continuous = true; 
     recogInstance.interimResults = true;
     recogInstance.lang = 'en-US';
+
+    recogInstance.onstart = () => { // Explicitly set isListening on API start
+      setIsListening(true);
+    };
 
     recogInstance.onresult = (event: SpeechRecognitionEvent) => {
       let currentInterimTranscript = '';
@@ -40,10 +44,7 @@ const useSpeechToText = (options?: SpeechToTextOptions) => {
           currentInterimTranscript += event.results[i][0].transcript;
         }
       }
-      // Update internal transcript state for consumers that just want the latest string
       setTranscript(currentFinalTranscript || currentInterimTranscript);
-
-      // Pass the raw event to the callback
       if (options?.onResult) {
         options.onResult(event);
       }
@@ -51,14 +52,14 @@ const useSpeechToText = (options?: SpeechToTextOptions) => {
 
     recogInstance.onerror = (event: SpeechRecognitionError) => {
       setError(event.error);
-      setIsListening(false);
+      setIsListening(false); // Ensure isListening is false on error
       if (options?.onError) {
         options.onError(event);
       }
     };
 
     recogInstance.onend = () => {
-      setIsListening(false);
+      setIsListening(false); // Ensure isListening is false when API ends
       if (options?.onEnd) {
         options.onEnd();
       }
@@ -67,34 +68,37 @@ const useSpeechToText = (options?: SpeechToTextOptions) => {
     setRecognition(recogInstance);
 
     return () => {
-      recogInstance.stop();
+      if (recogInstance) { // Ensure recogInstance exists before trying to stop
+        recogInstance.stop();
+      }
     };
-  }, [options]); // options is the dependency
+  }, [options]);
 
   const startListening = useCallback(() => {
-    if (recognition && !isListening) {
+    if (recognition && !isListening) { // Guard with hook's isListening
       try {
-        setTranscript(''); // Clear internal transcript
+        setTranscript('');
         setError(null);
         recognition.start();
-        setIsListening(true);
+        // isListening will be set to true by recogInstance.onstart
       } catch (e: any) {
         setError(e.message || 'Failed to start recognition');
-        setIsListening(false);
+        setIsListening(false); // Ensure state consistency if start fails
       }
     }
   }, [recognition, isListening]);
 
   const stopListening = useCallback(() => {
-    if (recognition && isListening) {
+    if (recognition) {
+      // Always attempt to stop the recognition if the instance exists.
+      // The onend event will handle setting isListening to false.
       recognition.stop();
-      // isListening will be set to false by the onend handler
     }
-  }, [recognition, isListening]);
+  }, [recognition]); // Removed isListening from dependencies
 
   return {
     isListening,
-    transcript, // Consumers can still use this for live updates if needed
+    transcript,
     error,
     startListening,
     stopListening,

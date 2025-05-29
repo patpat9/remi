@@ -122,10 +122,10 @@ const ChatInterface = () => {
     }
 
     if (finalTranscriptUpdateForThisEvent) {
-      finalTranscriptRef.current += (finalTranscriptRef.current.length > 0 && finalTranscriptUpdateForThisEvent.length > 0 ? ' ' : '') + finalTranscriptUpdateForThisEvent;
+      finalTranscriptRef.current += (finalTranscriptRef.current.length > 0 && finalTranscriptUpdateForThisEvent.length > 0 && !finalTranscriptRef.current.endsWith(' ') && !finalTranscriptUpdateForThisEvent.startsWith(' ') ? ' ' : '') + finalTranscriptUpdateForThisEvent;
     }
     
-    setInputText(finalTranscriptRef.current + (interimTranscript ? (finalTranscriptRef.current.length > 0 ? ' ' : '') + interimTranscript : ''));
+    setInputText(finalTranscriptRef.current + (interimTranscript ? (finalTranscriptRef.current.length > 0 && !finalTranscriptRef.current.endsWith(' ') && !interimTranscript.startsWith(' ') ? ' ' : '') + interimTranscript : ''));
   }, []);
 
   const handleSpeechError = useCallback((event: SpeechRecognitionError) => {
@@ -135,7 +135,8 @@ const ChatInterface = () => {
   }, [toast]);
   
   const onSpeechEndCallback = useCallback(() => {
-    // Minimal callback, message sending is handled by mouse/key up events
+    // This callback is primarily for the hook to update its 'isListening' state.
+    // Message sending is handled by mouse/key up events.
   }, []);
   
   const speechToTextOptions = useMemo(() => ({
@@ -160,16 +161,24 @@ const ChatInterface = () => {
   }, [state.isChatLoading, hasRecognitionSupport, startListening, isListening]);
 
   const handleMicMouseUp = useCallback(() => {
-    if (!hasRecognitionSupport || !isListening) return; // Only act if currently listening
+    if (!hasRecognitionSupport) return; 
+    // Call stopListening regardless of current isListening state from the hook,
+    // as the user action (releasing button/key) implies an attempt to stop.
     stopListening(); 
 
-    const messageToSend = finalTranscriptRef.current.trim();
-    if (messageToSend) {
-      handleSendMessage(messageToSend);
-    }
-    finalTranscriptRef.current = ''; 
-    setInputText(''); 
-  }, [hasRecognitionSupport, stopListening, handleSendMessage, isListening]);
+    // Use a brief timeout to allow the final speech result to be processed by onSpeechResultCallback
+    // This helps ensure finalTranscriptRef.current has the latest utterance.
+    setTimeout(() => {
+      const messageToSend = finalTranscriptRef.current.trim();
+      if (messageToSend) {
+        handleSendMessage(messageToSend);
+      }
+      finalTranscriptRef.current = ''; 
+      setInputText(''); 
+    }, 50); // Small delay, adjust if needed
+
+  }, [hasRecognitionSupport, stopListening, handleSendMessage]);
+
 
   useEffect(() => {
     if (speechError) {
@@ -178,13 +187,12 @@ const ChatInterface = () => {
   }, [speechError, toast]);
 
   useEffect(() => {
-    if (chatContainerRef.current) {
-      const element = chatContainerRef.current;
-      setTimeout(() => {
-        element.scrollTop = element.scrollHeight;
-      }, 0);
+    const div = chatContainerRef.current;
+    if (div) {
+      div.scrollTop = div.scrollHeight;
     }
   }, [state.chatMessages]);
+
 
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
@@ -197,7 +205,7 @@ const ChatInterface = () => {
         hasRecognitionSupport
       ) {
         event.preventDefault();
-        handleMicMouseDown();
+        handleMicMouseDown(); // This now calls the modified handleMicMouseDown
         spacebarIsControllingPttRef.current = true;
       }
     };
@@ -209,8 +217,7 @@ const ChatInterface = () => {
         hasRecognitionSupport 
       ) {
         event.preventDefault();
-        // handleMicMouseUp will only act if isListening is true, which it should be
-        handleMicMouseUp(); 
+        handleMicMouseUp(); // This now calls the modified handleMicMouseUp
         spacebarIsControllingPttRef.current = false;
       }
     };
@@ -222,10 +229,8 @@ const ChatInterface = () => {
       window.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('keyup', handleGlobalKeyUp);
       if (spacebarIsControllingPttRef.current) {
-        // If component unmounts while spacebar was held for PTT
-        if (isListening) { // Check isListening before calling stopListening
-          stopListening();
-        }
+        // If component unmounts or effect re-runs while spacebar was held
+        stopListening(); // Ensure recognition is stopped
         spacebarIsControllingPttRef.current = false;
       }
     };
@@ -244,7 +249,7 @@ const ChatInterface = () => {
         {state.chatMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-sm py-8">
             Chat with Remi about your uploaded content, or ask anything else!
-            {hasRecognitionSupport && <p className="text-xs mt-1">(Try holding Spacebar to talk)</p>}
+            {hasRecognitionSupport && <p className="text-xs mt-1">(Try holding Spacebar or Mic button to talk)</p>}
           </div>
         )}
         {state.chatMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)}
@@ -269,10 +274,10 @@ const ChatInterface = () => {
           )}
           <Input
             type="text"
-            placeholder={isListening ? "Listening..." : "Type or hold Space to talk..."}
+            placeholder={isListening ? "Listening..." : "Type or hold Space/Mic to talk..."}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            disabled={state.isChatLoading || (isListening && !spacebarIsControllingPttRef.current)} // Allow typing if listening via spacebar but then decide to type
+            disabled={state.isChatLoading || (isListening && !spacebarIsControllingPttRef.current && document.activeElement?.tagName !== 'INPUT')}
             className="flex-1"
           />
           <Button type="submit" size="icon" disabled={state.isChatLoading || (!inputText.trim() && !isListening)}>
@@ -285,5 +290,3 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
-
-    
