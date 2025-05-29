@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Mic, Send, Loader2, MessageSquareIcon } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import { useAppContext } from './AppProvider';
-import type { ChatMessage as ChatMessageType, SpeechRecognitionError } from '@/lib/types';
+import type { ChatMessage as ChatMessageType, ContentItem, SpeechRecognitionError } from '@/lib/types';
 import { remiChat, RemiChatInput, RemiChatOutput } from '@/ai/flows/remi-chat-flow';
 import { useToast } from '@/hooks/use-toast';
 import useSpeechToText from '@/hooks/use-speech-to-text';
@@ -56,7 +56,7 @@ const ChatInterface = () => {
   useEffect(() => {
     if (chatContainerRef.current) {
       const element = chatContainerRef.current;
-      setTimeout(() => {
+      setTimeout(() => { // Defer scroll to allow DOM to update
         element.scrollTop = element.scrollHeight;
       }, 0);
     }
@@ -86,9 +86,25 @@ const ChatInterface = () => {
           (item.summary || `A summary for this ${item.type} content (name: ${item.name}) is not yet available or applicable.`)
       }));
 
+      let currentSelectedItemInfoForAI: RemiChatInput['currentSelectedItemInfo'] = undefined;
+      if (state.selectedContentId) {
+        const selectedItem = state.contentItems.find(item => item.id === state.selectedContentId);
+        if (selectedItem) {
+          currentSelectedItemInfoForAI = {
+            id: selectedItem.id,
+            name: selectedItem.name,
+            type: selectedItem.type,
+            information: selectedItem.type === 'text' ?
+              (selectedItem.data || "No text content available for this item.") :
+              (selectedItem.summary || `A summary for this ${selectedItem.type} content (name: ${selectedItem.name}) is not yet available or applicable.`)
+          };
+        }
+      }
+
       const aiInput: RemiChatInput = {
         userMessage: currentInputText,
         availableContent: availableContentForAI,
+        currentSelectedItemInfo: currentSelectedItemInfoForAI,
       };
 
       const result: RemiChatOutput = await remiChat(aiInput);
@@ -107,6 +123,16 @@ const ChatInterface = () => {
       }
 
       if (result.mediaCommandToExecute) {
+        // Ensure the content to be controlled is selected, even if AI didn't explicitly select it with this command
+        // This handles cases where AI implies control over the *already* selected item
+        if (result.mediaCommandToExecute.contentId && result.mediaCommandToExecute.contentId !== state.selectedContentId) {
+            // Only dispatch SELECT_CONTENT if the AI is trying to control a *different* item than currently selected,
+            // AND it didn't *also* provide selectedContentIdByAi (which would have already selected it).
+            // If selectedContentIdByAi *was* provided, it matches mediaCommandToExecute.contentId, so this is fine.
+            if(!result.selectedContentIdByAi || result.selectedContentIdByAi !== result.mediaCommandToExecute.contentId) {
+                 dispatch({ type: 'SELECT_CONTENT', payload: result.mediaCommandToExecute.contentId });
+            }
+        }
         dispatch({ type: 'SET_PENDING_MEDIA_COMMAND', payload: result.mediaCommandToExecute });
       }
 

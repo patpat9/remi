@@ -21,6 +21,7 @@ const UploadedContentInfoSchema = z.object({
 const RemiChatInputSchema = z.object({
   userMessage: z.string().describe("The user's message."),
   availableContent: z.array(UploadedContentInfoSchema).optional().describe('An array of all available content items, including their name, type, and text/summary.'),
+  currentSelectedItemInfo: UploadedContentInfoSchema.optional().describe('Information about the currently selected content item, if any. Useful for contextual commands like "play this" or "pause".'),
 });
 export type RemiChatInput = z.infer<typeof RemiChatInputSchema>;
 
@@ -60,7 +61,7 @@ const selectContentTool = ai.defineTool(
 const controlMediaPlaybackTool = ai.defineTool(
   {
     name: 'controlMediaPlayback',
-    description: 'Use this tool to control media playback (audio or YouTube videos). Provide the "contentId", "mediaType" (\'audio\' or \'youtube\'), and "command" (\'play\', \'pause\', or \'restart\').',
+    description: 'Use this tool to control media playback (audio or YouTube videos). Provide the "contentId", "mediaType" (\'audio\' or \'youtube\'), and "command" (\'play\', \'pause\', or \'restart\'). If the user issues a generic command like "pause" and a playable item is currently selected (see "currentSelectedItemInfo"), apply the command to that selected item.',
     inputSchema: MediaCommandSchema,
     outputSchema: z.object({
       success: z.boolean(),
@@ -81,7 +82,7 @@ const prompt = ai.definePrompt({
   name: 'remiChatPrompt',
   input: {schema: RemiChatInputSchema},
   output: {schema: RemiChatOutputSchema},
-  tools: [selectContentTool, controlMediaPlaybackTool], // Make tools available
+  tools: [selectContentTool, controlMediaPlaybackTool], 
   prompt: `You are Remi, a friendly and helpful AI content companion. Your main role is to discuss and answer questions based on the content the user has uploaded.
 
 {{#if availableContent.length}}
@@ -96,6 +97,19 @@ Available Content:
     Information: {{{this.information}}}
   ---
 {{/each}}
+{{else}}
+No content has been uploaded yet. You can chat with the user generally, or encourage them to upload some content to discuss.
+{{/if}}
+
+{{#if currentSelectedItemInfo}}
+Currently Selected Item (for contextual commands like "pause", "play this"):
+  - Item ID: {{currentSelectedItemInfo.id}}
+    Item Name: "{{currentSelectedItemInfo.name}}"
+    Type: {{currentSelectedItemInfo.type}}
+    Information: {{{currentSelectedItemInfo.information}}}
+
+If the user gives a generic media command (e.g., "pause", "play this") without specifying an item, AND this selected item is an 'audio' or 'youtube' type, assume the command applies to THIS item. You should still use the 'controlMediaPlayback' tool, passing this item's ID.
+{{/if}}
 
 Tools Available:
 1. 'selectContentTool':
@@ -107,19 +121,16 @@ Tools Available:
    - Description: Use this tool to control audio or YouTube video playback.
    - Input: { "contentId": "some-item-id", "mediaType": "audio"_or_"youtube", "command": "play"_or_"pause"_or_"restart" }
    - Instructions: If the user asks to play, pause, or restart an audio or YouTube video, use this tool with the corresponding 'Item ID', 'mediaType', and 'command'.
+     If the user issues a generic command like "pause" and a playable item is currently selected (see 'currentSelectedItemInfo'), apply the command to that selected item by providing its ID.
      When you use this tool, you MUST:
      1. Populate 'mediaCommandToExecute' in your JSON output with the exact details you sent to the tool.
      2. Populate 'selectedContentIdByAi' in your JSON output with the 'Item ID' of the media you are controlling. This ensures the correct item is displayed when the media command is issued.
      Only use this tool for 'audio' or 'youtube' type content.
 
 Your main textual response in 'aiResponse' should still be natural.
-{{else}}
-No content has been uploaded yet. You can chat with the user generally, or encourage them to upload some content to discuss.
-{{/if}}
-
 User's Message: {{{userMessage}}}
 
-Based on the user's message and the available content, provide your 'aiResponse'. If you use any tools, ensure you also set the corresponding fields ('selectedContentIdByAi' and/or 'mediaCommandToExecute') in your output.
+Based on the user's message, the available content, and the currently selected item (if any), provide your 'aiResponse'. If you use any tools, ensure you also set the corresponding fields ('selectedContentIdByAi' and/or 'mediaCommandToExecute') in your output.
 Remi's JSON Output:`,
 });
 
@@ -137,14 +148,12 @@ const remiChatFlow = ai.defineFlow(
       if (llmOutput) {
         return llmOutput;
       } else {
-        // Fallback if LLM output is null after parsing (e.g. didn't match schema)
         console.error("Remi Chat Flow: LLM did not produce valid output matching schema (llmOutput is null/undefined after parsing). Returning fallback response.");
         return {
           aiResponse: "I'm sorry, I had a little trouble understanding that or formulating a response in the expected format. Could you try rephrasing your message?",
         };
       }
     } catch (error) {
-        // Fallback if the prompt(input) call itself throws an error
         console.error("Remi Chat Flow: Error during AI prompt execution. Returning fallback response.", error);
         return {
           aiResponse: "My apologies, an unexpected error occurred while I was trying to process your request. Please try again.",
@@ -152,4 +161,3 @@ const remiChatFlow = ai.defineFlow(
     }
   }
 );
-
