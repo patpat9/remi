@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, ChangeEvent, useRef } from 'react';
@@ -29,15 +28,13 @@ const UploadSection = () => {
   
   const photoInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
-  const audioInputRef = useRef<HTMLInputElement>(null); // Added ref for audio input
+  const audioInputRef = useRef<HTMLInputElement>(null); 
   const [youtubeUrl, setYoutubeUrl] = useState('');
-  // const [audioFile, setAudioFile] = useState<File | null>(null); // No longer needed
   const { toast } = useToast();
 
   const handleOpenChange = (type: Extract<ContentType, 'youtube'>, open: boolean) => {
     setDialogOpen(prev => ({ ...prev, [type]: open }));
     if (!open) {
-      // Reset specific states when dialog closes
       if (type === 'youtube') setYoutubeUrl('');
     }
   };
@@ -80,7 +77,7 @@ const UploadSection = () => {
     let newItemDataPartial: Omit<ContentItem, 'summary' | 'thumbnail' | 'id' | 'createdAt' | 'data' | 'originalData'> & { createdAt: string; id: string; data: string; originalData?: string; } | null = null;
     let aiInput: SummarizeContentInput | null = null;
     let thumbnail: string | undefined = undefined;
-    let itemName: string = 'Uploaded Content';
+    let itemName: string = file?.name || 'Uploaded Content'; // Use file name if available
 
     try {
       dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: true } });
@@ -93,19 +90,19 @@ const UploadSection = () => {
         aiInput = { contentType: 'photo', contentData: dataUrl };
         thumbnail = dataUrl;
       } else if (type === 'youtube' && youtubeUrl) {
+        itemName = 'YouTube Video'; // YouTube videos don't have a file name
         if (!youtubeUrl.match(/^(https|http):\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)/)) {
           toast({ title: "Invalid YouTube URL", description: "Please enter a valid YouTube video URL.", variant: "destructive" });
-          dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
+          dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } }); // Clear loading for this specific attempt
           return;
         }
-        itemName = 'YouTube Video'; 
         const videoIdMatch = youtubeUrl.match(/(?:youtu\.be\/|watch\?v=)([\w-]+)/);
         const videoId = videoIdMatch ? videoIdMatch[1] : null;
         thumbnail = videoId ? `https://img.youtube.com/vi/${videoId}/0.jpg` : undefined;
         newItemDataPartial = { id, type, name: itemName, data: youtubeUrl, originalData: youtubeUrl, createdAt: currentTimeISO };
         aiInput = { contentType: 'youtube', contentData: youtubeUrl };
-         handleOpenChange('youtube', false); // Close dialog on successful processing
-      } else if (type === 'audio' && file) { // Changed from audioFile to file
+        handleOpenChange('youtube', false); 
+      } else if (type === 'audio' && file) {
         itemName = file.name;
         const dataUrl = await readFileAsDataURL(file);
         newItemDataPartial = { id, type, name: file.name, data: dataUrl, originalData: dataUrl, createdAt: currentTimeISO };
@@ -141,21 +138,28 @@ const UploadSection = () => {
           toast({ title: "Content Added", description: `${itemName} added.` });
         }
       } else {
-         dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
+         // Only clear loading if an item wasn't successfully processed (e.g. invalid YouTube URL but no file)
+         // If 'file' is undefined and type is not 'youtube', it means this path shouldn't be hit often.
+         if (!file && type !== 'youtube') {
+            dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
+         }
       }
     } catch (error: any) {
       console.error("Error processing upload or summary:", error);
-      toast({ title: "Upload Error", description: error.message || "Could not process content or generate summary.", variant: "destructive" });
+      toast({ title: "Upload Error", description: error.message || `Could not process ${itemName || 'content'} or generate summary.`, variant: "destructive" });
       dispatch({ type: 'SET_SUMMARY_LOADING', payload: { id, isLoading: false } });
     }
   };
 
   const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>, type: 'photo' | 'text' | 'audio') => {
-    if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      await performUploadProcessing(type, file);
+    if (event.target.files && event.target.files.length > 0) {
+      const files = Array.from(event.target.files); // Convert FileList to Array
+      for (const file of files) {
+        // Process each file. performUploadProcessing is async and handles its own ID/loading state.
+        await performUploadProcessing(type, file);
+      }
       if (event.target) {
-        event.target.value = ""; // Reset file input
+        event.target.value = ""; // Reset file input to allow selecting the same file(s) again
       }
     }
   };
@@ -169,6 +173,7 @@ const UploadSection = () => {
     onClick?: () => void; 
     fileInputRef?: React.RefObject<HTMLInputElement>; 
     fileAccept?: string; 
+    isMultiple?: boolean;
   }> = [
     { 
       type: 'photo', 
@@ -177,6 +182,7 @@ const UploadSection = () => {
       onClick: () => photoInputRef.current?.click(),
       fileInputRef: photoInputRef,
       fileAccept: "image/*",
+      isMultiple: true,
     },
     { 
       type: 'youtube', 
@@ -186,14 +192,16 @@ const UploadSection = () => {
         <Input type="url" placeholder="https://www.youtube.com/watch?v=..." value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} />
       ),
       getIsDialogDisabled: () => !youtubeUrl,
+      isMultiple: false, // YouTube is single URL
     },
     { 
       type: 'audio', 
       icon: <FileAudioIcon className="mr-2 h-5 w-5" />, 
       label: 'Audio', 
-      onClick: () => audioInputRef.current?.click(), // Direct click
-      fileInputRef: audioInputRef,                 // Ref to hidden input
-      fileAccept: "audio/*",                        // File accept types
+      onClick: () => audioInputRef.current?.click(), 
+      fileInputRef: audioInputRef,                 
+      fileAccept: "audio/*",                        
+      isMultiple: true,
     },
     { 
       type: 'text', 
@@ -202,6 +210,7 @@ const UploadSection = () => {
       onClick: () => documentInputRef.current?.click(),
       fileInputRef: documentInputRef,
       fileAccept: ".txt,.pdf,.md,.rtf,.doc,.docx,.odt,text/*,application/pdf",
+      isMultiple: true,
     },
   ];
 
@@ -226,6 +235,7 @@ const UploadSection = () => {
                   type="file"
                   ref={opt.fileInputRef}
                   accept={opt.fileAccept}
+                  multiple={opt.isMultiple} // Added multiple attribute
                   style={{ display: 'none' }}
                   onChange={(e) => handleFileSelected(e, opt.type as 'photo' | 'text' | 'audio')}
                 />
@@ -259,7 +269,7 @@ const UploadSection = () => {
                     <Button variant="outline">Cancel</Button>
                   </DialogClose>
                   <Button 
-                    onClick={() => performUploadProcessing(opt.type)} // For YouTube, file comes from youtubeUrl
+                    onClick={() => performUploadProcessing(opt.type)} 
                     disabled={opt.getIsDialogDisabled ? opt.getIsDialogDisabled() : false}
                   >
                     Add Content
