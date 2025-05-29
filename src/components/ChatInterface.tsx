@@ -126,27 +126,22 @@ const ChatInterface = () => {
     let fullFinalTranscript = ""; 
     let currentInterimTranscript = "";
 
-    // Iterate through all results in the event to reconstruct the full final transcript
     for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         if (result.isFinal) {
-            fullFinalTranscript += result[0].transcript + " "; // Add space for concatenation
+            fullFinalTranscript += result[0].transcript + " "; 
         } else {
             currentInterimTranscript += result[0].transcript;
         }
     }
-    fullFinalTranscript = fullFinalTranscript.trim(); // Trim trailing space
+    fullFinalTranscript = fullFinalTranscript.trim(); 
 
-    // If there's any final transcript content from this event or previous, update the ref
     if (fullFinalTranscript) {
         finalTranscriptRef.current = fullFinalTranscript;
     } else if (event.results.length > 0 && event.results[event.results.length-1].isFinal === false && !finalTranscriptRef.current && !currentInterimTranscript) {
-        // If only interim results and no final results yet, but speech has started, clear ref in case of stutter start.
         finalTranscriptRef.current = '';
     }
     
-    // For display, use the latest full final transcript and append the current interim part.
-    // If finalTranscriptRef is empty, it means no final parts yet, so just show interim.
     const displayTranscript = (finalTranscriptRef.current ? finalTranscriptRef.current + " " : "") + currentInterimTranscript.trim();
     setInputText(displayTranscript.trim());
 
@@ -161,7 +156,6 @@ const ChatInterface = () => {
   
   const onSpeechEndCallback = useCallback(() => {
     // This callback is primarily for the hook to update its 'isListening' state.
-    // The actual sending of message on button release is handled in handleMicMouseUp.
   }, []);
   
   const speechToTextOptions = useMemo(() => ({
@@ -216,7 +210,7 @@ const ChatInterface = () => {
     if (div) {
       const timer = setTimeout(() => {
         div.scrollTop = div.scrollHeight;
-      }, 50); // Slightly increased delay for scroll
+      }, 50); 
       return () => clearTimeout(timer);
     }
   }, [state.chatMessages]);
@@ -299,10 +293,10 @@ const ChatInterface = () => {
             onTouchStart={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseDown(); }}
             onTouchEnd={(e) => { e.preventDefault(); if (!spacebarIsControllingPttRef.current) handleMicMouseUp(); }}     
             disabled={state.isChatLoading}
-            className={(isListening && !spacebarIsControllingPttRef.current) ? "bg-accent text-accent-foreground" : ""}
+            className={isListening ? "bg-accent text-accent-foreground" : ""}
             aria-label="Record voice message (or hold Spacebar)"
           >
-            <Mic className={(isListening && !spacebarIsControllingPttRef.current) ? "text-destructive animate-pulse" : ""} />
+            <Mic className={isListening ? "text-destructive animate-pulse" : ""} />
           </Button>
           )}
           <Input
@@ -323,4 +317,6 @@ const ChatInterface = () => {
 };
 
 export default ChatInterface;
+    
+
     
