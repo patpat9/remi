@@ -24,7 +24,7 @@ const ChatInterface = () => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.5;
+      utterance.rate = 1.0;
       utterance.lang = 'en-US';
 
       utterance.onstart = () => {
